@@ -43,7 +43,7 @@
             q 为空时返回 40001
       样本：q=斗破苍穹
 
-- [ ] T4 internal/upstream/detail.go + GET /api/detail
+- [x] T4 internal/upstream/detail.go + GET /api/detail
       FetchDetail + ParseDetail
       验收：book_id=7579985241087937560 返回 7 个字段齐全，word_number 是数字
       样本：7579985241087937560（正常）、7645235352245667856（书不存在 → 502）
