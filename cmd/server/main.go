@@ -16,7 +16,9 @@ import (
 
 	"novel-proxy/internal/api"
 	"novel-proxy/internal/config"
+	"novel-proxy/internal/handler"
 	"novel-proxy/internal/logx"
+	"novel-proxy/internal/upstream"
 )
 
 func main() {
@@ -50,6 +52,9 @@ func main() {
 	engine := gin.New()
 	engine.Use(api.SlogMiddleware(lg), api.RecoveryMiddleware(lg, cfg.App.Mode))
 	engine.NoRoute(api.NoRoute)
+
+	client := upstream.NewClient(cfg.Upstream.TimeoutSeconds)
+	engine.GET("/api/search", handler.Search(client))
 
 	srv := &http.Server{Addr: cfg.Server.Addr, Handler: engine}
 	go func() {

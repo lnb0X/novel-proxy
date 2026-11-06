@@ -1,0 +1,49 @@
+package handler
+
+import (
+	"strconv"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+	"github.com/go-resty/resty/v2"
+
+	"novel-proxy/internal/api"
+	"novel-proxy/internal/upstream"
+)
+
+// Search GET /api/search?q=&page=
+func Search(client *resty.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		q := strings.TrimSpace(c.Query("q"))
+		if q == "" {
+			api.Fail(c, api.CodeBadRequest, "参数 q 必填")
+			return
+		}
+
+		page := 1
+		if s := c.Query("page"); s != "" {
+			p, err := strconv.Atoi(s)
+			if err != nil {
+				api.Fail(c, api.CodeBadRequest, "参数 page 必须是整数")
+				return
+			}
+			if p < 1 {
+				p = 1
+			}
+			page = p
+		}
+
+		raw, err := upstream.FetchSearch(c.Request.Context(), client, q, page)
+		if err != nil {
+			failUpstream(c, err)
+			return
+		}
+		result, err := upstream.ParseSearch(raw)
+		if err != nil {
+			api.Fail(c, api.CodeUpstreamBizError, err.Error())
+			return
+		}
+		result.Page = page
+		api.OK(c, result)
+	}
+}
