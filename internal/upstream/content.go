@@ -88,7 +88,9 @@ func ParseContent(raw []byte) (Content, error) {
 			name, hasAttr := z.TagName()
 			tag := strings.ToLower(string(name))
 			if tag == "title" {
-				inTitle = true
+				// 页面里有多个 title（如 aria 用的 Loading 占位），
+				// 只取文档中第一个有内容的。
+				inTitle = title.Len() == 0
 				continue
 			}
 			if tag == "article" {

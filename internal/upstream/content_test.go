@@ -122,6 +122,20 @@ func TestParseContentTitleNoSuffix(t *testing.T) {
 	}
 }
 
+func TestParseContentFirstTitleWins(t *testing.T) {
+	// 实测上游页面第二个 <title> 是 aria 占位（Loading...），不能拼进标题。
+	raw := `<html><head><title>第1章 重生 - 今日头条</title>` +
+		`<title id="author-related-list-loading-aria">Loading...</title></head>` +
+		`<body><article class="syl-article-base"><p>x</p></article></body></html>`
+	c, err := ParseContent([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Title != "第1章 重生" {
+		t.Fatalf("title 应只取第一个 title 元素: %q", c.Title)
+	}
+}
+
 func TestParseContentNoArticle(t *testing.T) {
 	// 页面里找不到 article 必须报错，不得返回空 content。
 	raw := wrapBody(`<div class="captcha">请输入验证码</div>`)

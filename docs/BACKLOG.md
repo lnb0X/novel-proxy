@@ -55,7 +55,7 @@
       样本：7579985241087937560（58 章）、7542602438201576472（499 章）、
             7637198840910580798（详情有目录空 → total: 0）
 
-- [ ] T6 internal/upstream/content.go + GET /api/content
+- [x] T6 internal/upstream/content.go + GET /api/content
       FetchContent + ParseContent（Tokenizer 白名单过滤）
       验收：四个样本全部符合预期，详见 docs/SAMPLES.md
       完成后 git tag T6-done
