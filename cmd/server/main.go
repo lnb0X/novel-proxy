@@ -55,6 +55,7 @@ func main() {
 
 	client := upstream.NewClient(cfg.Upstream.TimeoutSeconds)
 	engine.GET("/api/search", handler.Search(client))
+	engine.GET("/api/detail", handler.Detail(client))
 
 	srv := &http.Server{Addr: cfg.Server.Addr, Handler: engine}
 	go func() {
