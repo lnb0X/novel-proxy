@@ -2,7 +2,7 @@
 
 ## v0.1 四个接口
 
-- [ ] T1 配置与日志
+- [x] T1 配置与日志
       严格按这个顺序做：
       1. 建 .gitignore：bin/、logs/、*.exe、.env、tmp/
       2. 建 .gitattributes：* text=auto eol=lf
