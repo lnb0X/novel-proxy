@@ -24,7 +24,7 @@
         git status 里看不到 logs/ 和 bin/ 下的任何文件
       完成后 git tag T1-done
 
-- [ ] T2 gin 骨架与统一响应
+- [x] T2 gin 骨架与统一响应
       gin.New() + 自写 slog 中间件 + 自写 recovery 中间件 + 统一响应封装
       NoRoute 统一返回 JSON 404；app.mode 映射到 gin.SetMode
       验收：
