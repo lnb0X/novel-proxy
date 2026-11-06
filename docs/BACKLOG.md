@@ -48,7 +48,7 @@
       验收：book_id=7579985241087937560 返回 7 个字段齐全，word_number 是数字
       样本：7579985241087937560（正常）、7645235352245667856（书不存在 → 502）
 
-- [ ] T5 internal/upstream/catalog.go + GET /api/catalog
+- [x] T5 internal/upstream/catalog.go + GET /api/catalog
       FetchCatalog + ParseCatalog
       验收：book_id=7579985241087937560 返回 58 章，volume 是空串，
             chapters 顺序与 upstrTeam 的 allItemIds 一致
