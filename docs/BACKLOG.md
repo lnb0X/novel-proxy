@@ -36,7 +36,7 @@
         app.mode 改 debug 后，error 级日志开始带 stack 字段，HTTP 响应体不变
       完成后 git tag T2-done
 
-- [ ] T3 internal/upstream/search.go + GET /api/search
+- [x] T3 internal/upstream/search.go + GET /api/search
       FetchSearch + ParseSearch，测试只测 ParseSearch
       验收：curl 'http://localhost:8080/api/search?q=斗破苍穹&page=1' 返回 10 条，
             book_id 是字符串，abstract 已 trim，has_more / next_offset 有值
