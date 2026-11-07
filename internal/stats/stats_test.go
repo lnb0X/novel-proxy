@@ -4,6 +4,7 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -193,4 +194,36 @@ func TestCacheListAndLookup(t *testing.T) {
 	if _, err := s.LookupArticleBookID("nope"); err == nil {
 		t.Fatal("查不到应报错")
 	}
+}
+
+// TestCloseRaceWithRecord N 个 goroutine 持续 Record/Audit，同时 Close：
+// -race 下不 panic、不报 data race。通道永不 close，向已停止实例发送
+// 只会走丢弃分支。
+func TestCloseRaceWithRecord(t *testing.T) {
+	s := newTestStats(t)
+	const workers = 8
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				s.Record(RequestRow{Time: time.Now(), Path: "/api/search", Status: 200, Code: 0, TraceID: "race"})
+				s.Audit("login_success", "u", "i", "ua", "", "ok")
+			}
+		}(i)
+	}
+	// 与仍在收尾的 worker 并发关闭。
+	time.Sleep(50 * time.Millisecond)
+	close(stop)
+	s.Close()
+	wg.Wait()
+	// 双重 Close 安全。
+	s.Close()
 }

@@ -41,9 +41,11 @@ type AuditRow struct {
 }
 
 // Stats 异步写入器。写入通道满时丢弃并计一次 dropped（统计自身不许
-// 拖垮请求路径）。
+// 拖垮请求路径）。关闭走 quit channel：通道本身永不 close，
+// 并发的 Record / Audit 不会因向已关闭通道发送而 panic。
 type Stats struct {
 	db      *sqlDB
+	quit    chan struct{}
 	reqCh   chan RequestRow
 	auditCh chan AuditRow
 	dropped atomic.Int64
@@ -81,6 +83,12 @@ func (s *Stats) Dropped() int64 { return s.dropped.Load() }
 
 func (s *Stats) sendReq(r RequestRow) {
 	select {
+	case <-s.quit:
+		s.dropped.Add(1)
+		return
+	default:
+	}
+	select {
 	case s.reqCh <- r:
 	default:
 		s.dropped.Add(1)
@@ -89,37 +97,51 @@ func (s *Stats) sendReq(r RequestRow) {
 
 func (s *Stats) sendAudit(a AuditRow) {
 	select {
+	case <-s.quit:
+		s.dropped.Add(1)
+		return
+	default:
+	}
+	select {
 	case s.auditCh <- a:
 	default:
 		s.dropped.Add(1)
 	}
 }
 
-// writer 协程：批量落表 + 定期清理超期行。Close 后排空两个通道再退出。
+// writer 协程：批量落表 + 定期清理超期行。收到 quit 后排空缓冲再退出。
 func (s *Stats) writer(lg *slog.Logger) {
 	defer close(s.done)
 	cleanup := time.NewTicker(cleanupEvery)
 	defer cleanup.Stop()
-	reqOpen, auditOpen := true, true
-	for reqOpen || auditOpen {
+	for {
 		select {
-		case r, ok := <-s.reqCh:
-			if !ok {
-				reqOpen = false
-				continue
-			}
+		case <-s.quit:
+			s.drain()
+			return
+		case r := <-s.reqCh:
 			s.insertRequest(r)
-		case a, ok := <-s.auditCh:
-			if !ok {
-				auditOpen = false
-				continue
-			}
+		case a := <-s.auditCh:
 			s.insertAudit(a)
 		case <-cleanup.C:
 			cutoff := time.Now().Add(-retention)
 			if n := s.deleteOlderThan(cutoff); n > 0 && lg != nil {
 				lg.Info("stats 过期数据清理", "rows", n)
 			}
+		}
+	}
+}
+
+// drain 非阻塞排空两个缓冲中已排队的行。
+func (s *Stats) drain() {
+	for {
+		select {
+		case r := <-s.reqCh:
+			s.insertRequest(r)
+		case a := <-s.auditCh:
+			s.insertAudit(a)
+		default:
+			return
 		}
 	}
 }

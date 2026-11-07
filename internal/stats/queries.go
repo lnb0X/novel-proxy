@@ -29,6 +29,7 @@ func New(driver, dsn string, lg *slog.Logger) (*Stats, error) {
 	db.SetMaxOpenConns(1)
 	s := &Stats{
 		db:      db,
+		quit:    make(chan struct{}),
 		reqCh:   make(chan RequestRow, 1024),
 		auditCh: make(chan AuditRow, 1024),
 		done:    make(chan struct{}),
@@ -49,8 +50,7 @@ func (s *Stats) Close() {
 	if !s.stopped.CompareAndSwap(false, true) {
 		return
 	}
-	close(s.reqCh)
-	close(s.auditCh)
+	close(s.quit)
 	<-s.done
 	_ = s.db.Close()
 }
