@@ -10,7 +10,11 @@ import (
 	"strings"
 	"time"
 
-	// 纯 Go 的 SQLite 驱动，CGO_ENABLED=0 可编译，注册名为 sqlite。
+	// 纯 Go 驱动：sqlite / postgres(pgx stdlib) / mysql，CGO_ENABLED=0 可编译。
+	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	_ "modernc.org/sqlite"
 )
 
@@ -57,6 +61,25 @@ func Open(driver, dsn string) (ArticleStore, error) {
 			db.SetMaxOpenConns(1)
 		}
 		return NewSQLStore(db, sqliteDialect{}), nil
+	case "postgres":
+		db, err := sql.Open("pgx", dsn)
+		if err != nil {
+			return nil, fmt.Errorf("打开 postgres: %w", err)
+		}
+		return NewSQLStore(db, postgresDialect{}), nil
+	case "mysql":
+		db, err := sql.Open("mysql", dsn)
+		if err != nil {
+			return nil, fmt.Errorf("打开 mysql: %w", err)
+		}
+		return NewSQLStore(db, mysqlDialect{}), nil
+	case "mongo":
+		opts := options.Client().ApplyURI(dsn)
+		mc, err := mongo.Connect(ctx0(), opts)
+		if err != nil {
+			return nil, fmt.Errorf("连接 mongo: %w", err)
+		}
+		return NewMongoStore(mc.Database(mongoDBName(dsn)).Collection("articles")), nil
 	default:
 		return nil, fmt.Errorf("存储驱动 %s 尚未实现", driver)
 	}
@@ -78,7 +101,8 @@ func (s *sqlStore) Ping(ctx context.Context) error {
 func (s *sqlStore) Get(ctx context.Context, bookID, itemID string) (*Article, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT item_id, book_id, title, content, size_bytes, created_at, updated_at
-		 FROM articles WHERE item_id = ? AND book_id = ?`, itemID, bookID)
+		 FROM articles WHERE item_id = `+s.d.Placeholder(1)+` AND book_id = `+s.d.Placeholder(2),
+		itemID, bookID)
 	var a Article
 	err := row.Scan(&a.ItemID, &a.BookID, &a.Title, &a.Content, &a.SizeBytes, &a.CreatedAt, &a.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -108,7 +132,8 @@ func (s *sqlStore) Put(ctx context.Context, a *Article) error {
 
 func (s *sqlStore) Delete(ctx context.Context, bookID, itemID string) error {
 	res, err := s.db.ExecContext(ctx,
-		`DELETE FROM articles WHERE item_id = ? AND book_id = ?`, itemID, bookID)
+		`DELETE FROM articles WHERE item_id = `+s.d.Placeholder(1)+` AND book_id = `+s.d.Placeholder(2),
+		itemID, bookID)
 	if err != nil {
 		return fmt.Errorf("删除文章: %w", err)
 	}
@@ -119,7 +144,7 @@ func (s *sqlStore) Delete(ctx context.Context, bookID, itemID string) error {
 }
 
 func (s *sqlStore) DeleteByBook(ctx context.Context, bookID string) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM articles WHERE book_id = ?`, bookID)
+	res, err := s.db.ExecContext(ctx, `DELETE FROM articles WHERE book_id = `+s.d.Placeholder(1), bookID)
 	if err != nil {
 		return 0, fmt.Errorf("按书删除: %w", err)
 	}
@@ -148,4 +173,21 @@ func (s *sqlStore) SumSize(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("统计体积: %w", err)
 	}
 	return n, nil
+}
+
+func ctx0() context.Context { return context.Background() }
+
+// mongoDBName 从 mongo DSN 的路径段取库名（mongodb://host/db?params）。
+func mongoDBName(dsn string) string {
+	rest := dsn
+	if i := strings.Index(rest, "://"); i >= 0 {
+		rest = rest[i+3:]
+	}
+	if i := strings.Index(rest, "?"); i >= 0 {
+		rest = rest[:i]
+	}
+	if i := strings.LastIndex(rest, "/"); i >= 0 {
+		return rest[i+1:]
+	}
+	return ""
 }
