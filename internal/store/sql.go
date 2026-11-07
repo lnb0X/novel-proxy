@@ -30,13 +30,15 @@ func Open(driver, dsn string) (ArticleStore, error) {
 	case "":
 		return nil, fmt.Errorf("storage.driver 未配置")
 	case "sqlite":
-		// busy_timeout 兜住与统计连接之间的并发写锁竞争。
+		// busy_timeout 兜住与统计连接之间的并发写锁竞争；
+		// WAL 让读写不互斥，多连接并发写不再互相阻塞 5 秒级。
+		// _pragma 参数可重复出现，用 & 连接。
 		if dsn != ":memory:" && !strings.Contains(dsn, "_pragma") {
 			sep := "?"
 			if strings.Contains(dsn, "?") {
 				sep = "&"
 			}
-			dsn += sep + "_pragma=busy_timeout(5000)"
+			dsn += sep + "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
 		}
 		if dsn != ":memory:" {
 			// SQLite 不会创建父目录，落盘前先建。
