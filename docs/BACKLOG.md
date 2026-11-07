@@ -37,7 +37,7 @@
         重启后令牌不变
       完成后 git tag W3-done
 
-- [ ] W4 静态服务
+- [x] W4 静态服务
       可换 handler（atomic 持有 http.Handler）
       路径解析：-static > 指针文件 > default/ > 404
       目录由 internal/frontend 的 manager 提供，不要在 handler 里写死路径
