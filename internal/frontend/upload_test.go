@@ -250,7 +250,8 @@ func TestDeleteVersion(t *testing.T) {
 }
 
 func TestValidateVersion(t *testing.T) {
-	for _, bad := range []string{"", ".", "..", "a/b", "a\b", "/abs", "C:\x"} {
+	back := string(os.PathSeparator)
+	for _, bad := range []string{"", ".", "..", "a/b", "a" + back + "b", "/abs", "C:" + back + "x"} {
 		if err := validateVersion(bad); err == nil {
 			t.Errorf("%q 应拒绝", bad)
 		}
