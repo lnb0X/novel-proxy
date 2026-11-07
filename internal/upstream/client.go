@@ -9,9 +9,11 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
-// NewClient 构建全局复用的 resty client，超时来自配置 upstream.timeout_seconds。
-func NewClient(timeoutSeconds int) *resty.Client {
+// NewClient 构建全局复用的 resty client，超时与并发上限来自
+// upstream.timeout_seconds / upstream.max_concurrency。
+func NewClient(timeoutSeconds, maxConcurrency int) *resty.Client {
 	clientTimeoutMs.Store(int64(timeoutSeconds) * 1000)
+	SetConcurrency(maxConcurrency)
 	return resty.New().SetTimeout(time.Duration(timeoutSeconds) * time.Second)
 }
 

@@ -66,7 +66,7 @@ func Content(client *resty.Client, st store.ArticleStore, cfg *config.Config) gi
 
 		lg := api.Logger(c)
 		fetchStart := time.Now()
-		raw, err := upstream.FetchContent(c.Request.Context(), client, lg, chapterID)
+		raw, err := upstream.FetchContent(c.Request.Context(), client, lg, cfg.Upstream.TimeoutSeconds, chapterID)
 		if err == nil {
 			api.SetUpstreamMS(c, time.Since(fetchStart).Milliseconds())
 		}

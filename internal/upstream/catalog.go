@@ -14,8 +14,13 @@ import (
 const catalogURL = "https://fanqienovel.com/api/reader/directory/detail"
 
 // FetchCatalog 请求上游目录接口，GET，参数驼峰 bookId。
-func FetchCatalog(ctx context.Context, client *resty.Client, lg *slog.Logger, bookID string) ([]byte, error) {
+func FetchCatalog(ctx context.Context, client *resty.Client, lg *slog.Logger, timeoutSeconds int, bookID string) ([]byte, error) {
 	start := time.Now()
+	release, aerr := acquireFetch(ctx, fetchTimeout(timeoutSeconds))
+	if aerr != nil {
+		return nil, aerr
+	}
+	defer release()
 	resp, err := client.R().
 		SetContext(ctx).
 		SetQueryParam("bookId", bookID).

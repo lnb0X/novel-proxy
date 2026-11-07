@@ -38,9 +38,9 @@ func TestBothSinksGetSameLine(t *testing.T) {
 	logFile := filepath.Join(dir, "app.log")
 
 	r, w, restore := captureStdout(t)
-	lg, closer := New("info", logFile, 50, 7, 14, false)
-	defer closer.Close()
-	lg.Info("novel-proxy 启动", "mode", "release", "addr", ":8080")
+	l := New("info", logFile, 50, 7, 14, false)
+	defer l.Close()
+	l.Logger.Info("novel-proxy 启动", "mode", "release", "addr", ":8080")
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -76,10 +76,10 @@ func TestLevelFilter(t *testing.T) {
 	dir := t.TempDir()
 
 	logFile := filepath.Join(dir, "info.log")
-	lg, closer := New("info", logFile, 50, 7, 14, false)
-	lg.Debug("debug 行", "k", "v")
-	lg.Info("info 行")
-	if err := closer.Close(); err != nil {
+	l := New("info", logFile, 50, 7, 14, false)
+	l.Logger.Debug("debug 行", "k", "v")
+	l.Logger.Info("info 行")
+	if err := l.Close(); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(logFile)
@@ -95,9 +95,9 @@ func TestLevelFilter(t *testing.T) {
 	}
 
 	dbgFile := filepath.Join(dir, "debug.log")
-	lg2, closer2 := New("debug", dbgFile, 50, 7, 14, false)
-	lg2.Debug("debug 行", "k", "v")
-	if err := closer2.Close(); err != nil {
+	l2 := New("debug", dbgFile, 50, 7, 14, false)
+	l2.Logger.Debug("debug 行", "k", "v")
+	if err := l2.Close(); err != nil {
 		t.Fatal(err)
 	}
 	b2, err := os.ReadFile(dbgFile)
@@ -109,10 +109,10 @@ func TestLevelFilter(t *testing.T) {
 	}
 
 	errFile := filepath.Join(dir, "error.log")
-	lg3, closer3 := New("error", errFile, 50, 7, 14, false)
-	lg3.Info("info 行")
-	lg3.Error("error 行")
-	if err := closer3.Close(); err != nil {
+	l3 := New("error", errFile, 50, 7, 14, false)
+	l3.Logger.Info("info 行")
+	l3.Logger.Error("error 行")
+	if err := l3.Close(); err != nil {
 		t.Fatal(err)
 	}
 	b3, err := os.ReadFile(errFile)
@@ -130,12 +130,12 @@ func TestRotation(t *testing.T) {
 	logFile := filepath.Join(dir, "app.log")
 
 	// max_size_mb=1，写入约 1.1MB 应触发滚动。
-	lg, closer := New("info", logFile, 1, 2, 7, false)
+	l := New("info", logFile, 1, 2, 7, false)
 	pad := strings.Repeat("x", 1024)
 	for i := 0; i < 1100; i++ {
-		lg.Info("fill", "pad", pad)
+		l.Logger.Info("fill", "pad", pad)
 	}
-	if err := closer.Close(); err != nil {
+	if err := l.Close(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -159,5 +159,31 @@ func TestRotation(t *testing.T) {
 	}
 	if mainSize > 1024*1024 {
 		t.Fatalf("主日志文件 %d 字节，超过 1MB 未滚动", mainSize)
+	}
+}
+
+func TestSetLevelHot(t *testing.T) {
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "hot.log")
+	l := New("info", logFile, 50, 7, 14, false)
+	defer l.Close()
+
+	l.Logger.Debug("不应出现")
+	if err := l.SetLevel("warn"); err == nil {
+		t.Fatal("非法级别应报错")
+	}
+	if err := l.SetLevel("debug"); err != nil {
+		t.Fatal(err)
+	}
+	if l.Level() != "debug" {
+		t.Fatalf("Level = %q", l.Level())
+	}
+	l.Logger.Debug("热更后应出现")
+	b, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "不应出现") || !strings.Contains(string(b), "热更后应出现") {
+		t.Fatalf("级别热更不符: %s", b)
 	}
 }

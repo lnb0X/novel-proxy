@@ -42,8 +42,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	lg, closer := logx.New(cfg.Log.Level, cfg.Log.File, cfg.Log.MaxSizeMB, cfg.Log.MaxBackups, cfg.Log.MaxAgeDays, cfg.Log.Compress)
-	defer closer.Close()
+	logHandle := logx.New(cfg.Log.Level, cfg.Log.File, cfg.Log.MaxSizeMB, cfg.Log.MaxBackups, cfg.Log.MaxAgeDays, cfg.Log.Compress)
+	defer logHandle.Close()
+	lg := logHandle.Logger
 	slog.SetDefault(lg)
 
 	slog.Debug("配置已加载",
@@ -159,7 +160,7 @@ func main() {
 		articleStore = counters
 	}
 	startedAt := time.Now()
-	client := upstream.NewClient(cfg.Upstream.TimeoutSeconds)
+	client := upstream.NewClient(cfg.Upstream.TimeoutSeconds, cfg.Upstream.MaxConcurrency)
 
 	// 固定链尾段：auth（管理端）→ flags → ratelimit。
 	// 所有 Use 必须先于任何路由注册，gin 在注册时捕获链。
@@ -206,15 +207,19 @@ func main() {
 		admin.GET("/api/content-rules", handler.GetContentRules(&cfg))
 		admin.PUT("/api/content-rules", handler.PutContentRules(&cfg, instancePath, statStore))
 		admin.POST("/api/content-rules/preview", handler.ContentRulesPreview(&cfg, client, articleStore))
+		admin.GET("/api/config/log", handler.GetLogConfig(logHandle, &cfg))
+		admin.PUT("/api/config/log", handler.PutLogConfig(logHandle, &cfg, instancePath, statStore))
+		admin.GET("/api/config/upstream", handler.GetUpstreamConfig(&cfg))
+		admin.PUT("/api/config/upstream", handler.PutUpstreamConfig(&cfg, client, instancePath, statStore))
 	}
 
 	// 静态目录解析：-static > 指针文件 > default/ 兜底 > 固定 404 页。
 
 	engine.NoRoute(api.SplitNoRoute(cfg.Server.AdminPath, adminSwap, swap, initSwap))
 
-	engine.GET("/api/search", handler.Search(client))
-	engine.GET("/api/detail", handler.Detail(client))
-	engine.GET("/api/catalog", handler.Catalog(client))
+	engine.GET("/api/search", handler.Search(client, &cfg))
+	engine.GET("/api/detail", handler.Detail(client, &cfg))
+	engine.GET("/api/catalog", handler.Catalog(client, &cfg))
 	engine.GET("/api/content", handler.Content(client, articleStore, &cfg))
 
 	srv := &http.Server{Addr: cfg.Server.Addr, Handler: engine}

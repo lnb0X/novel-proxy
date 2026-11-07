@@ -5,6 +5,7 @@ package stats
 
 import (
 	"log/slog"
+	"path/filepath"
 	"sync/atomic"
 	"time"
 )
@@ -144,4 +145,20 @@ func (s *Stats) drain() {
 			return
 		}
 	}
+}
+
+// NewForTest 测试辅助：内存库统计实例，随测试结束自动清理。
+func NewForTest(t testingT) *Stats {
+	s, err := New("sqlite", filepath.Join(t.TempDir(), "stats.db"), nil)
+	if err != nil {
+		panic(err)
+	}
+	t.Cleanup(s.Close)
+	return s
+}
+
+// testingT 缩小对 testing.T 的依赖面。
+type testingT interface {
+	TempDir() string
+	Cleanup(func())
 }

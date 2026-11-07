@@ -36,8 +36,13 @@ func acNonce() string {
 
 // FetchContent 请求上游正文页，wid 用当前毫秒时间戳，带桌面 Chrome UA、
 // Referer 和随机 __ac_nonce cookie。
-func FetchContent(ctx context.Context, client *resty.Client, lg *slog.Logger, chapterID string) ([]byte, error) {
+func FetchContent(ctx context.Context, client *resty.Client, lg *slog.Logger, timeoutSeconds int, chapterID string) ([]byte, error) {
 	start := time.Now()
+	release, aerr := acquireFetch(ctx, fetchTimeout(timeoutSeconds))
+	if aerr != nil {
+		return nil, aerr
+	}
+	defer release()
 	resp, err := client.R().
 		SetContext(ctx).
 		SetQueryParam("wid", strconv.FormatInt(time.Now().UnixMilli(), 10)).

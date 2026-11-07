@@ -7,11 +7,12 @@ import (
 	"github.com/go-resty/resty/v2"
 
 	"novel-proxy/internal/api"
+	"novel-proxy/internal/config"
 	"novel-proxy/internal/upstream"
 )
 
 // Catalog GET /api/catalog?book_id=
-func Catalog(client *resty.Client) gin.HandlerFunc {
+func Catalog(client *resty.Client, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		bookID, err := parseID("book_id", c.Query("book_id"))
 		if err != nil {
@@ -21,7 +22,7 @@ func Catalog(client *resty.Client) gin.HandlerFunc {
 
 		lg := api.Logger(c)
 		fetchStart := time.Now()
-		raw, err := upstream.FetchCatalog(c.Request.Context(), client, lg, bookID)
+		raw, err := upstream.FetchCatalog(c.Request.Context(), client, lg, cfg.Upstream.TimeoutSeconds, bookID)
 		api.SetUpstreamMS(c, time.Since(fetchStart).Milliseconds())
 		if err != nil {
 			failUpstream(c, err)

@@ -19,8 +19,13 @@ type detailRequest struct {
 }
 
 // FetchDetail 请求上游详情接口，POST JSON，只发请求。
-func FetchDetail(ctx context.Context, client *resty.Client, lg *slog.Logger, bookID string) ([]byte, error) {
+func FetchDetail(ctx context.Context, client *resty.Client, lg *slog.Logger, timeoutSeconds int, bookID string) ([]byte, error) {
 	start := time.Now()
+	release, aerr := acquireFetch(ctx, fetchTimeout(timeoutSeconds))
+	if aerr != nil {
+		return nil, aerr
+	}
+	defer release()
 	resp, err := client.R().
 		SetContext(ctx).
 		SetQueryParam("aid", "3040").

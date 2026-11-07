@@ -15,14 +15,14 @@ import (
 )
 
 func TestDetailRejectsEmptyBookID(t *testing.T) {
-	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/detail", Detail(nil)) })
+	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/detail", Detail(nil, &config.Config{})) })
 	target := "/api/detail"
 	code, e := doJSON(t, r, target)
 	wantBadRequest(t, target, code, e)
 }
 
 func TestCatalogRejectsEmptyBookID(t *testing.T) {
-	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/catalog", Catalog(nil)) })
+	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/catalog", Catalog(nil, &config.Config{})) })
 	target := "/api/catalog"
 	code, e := doJSON(t, r, target)
 	wantBadRequest(t, target, code, e)
@@ -90,14 +90,14 @@ func TestContentEchoesBookID(t *testing.T) {
 }
 
 func TestDetailRejectsBadBookID(t *testing.T) {
-	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/detail", Detail(nil)) })
+	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/detail", Detail(nil, &config.Config{})) })
 	target := "/api/detail?book_id=abc"
 	code, e := doJSON(t, r, target)
 	wantBadRequest(t, target, code, e)
 }
 
 func TestCatalogRejectsBadBookID(t *testing.T) {
-	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/catalog", Catalog(nil)) })
+	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/catalog", Catalog(nil, &config.Config{})) })
 	target := "/api/catalog?book_id=abc"
 	code, e := doJSON(t, r, target)
 	wantBadRequest(t, target, code, e)

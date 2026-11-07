@@ -10,12 +10,17 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/go-resty/resty/v2"
 	"novel-proxy/internal/api"
 	"novel-proxy/internal/config"
+	"novel-proxy/internal/logx"
 	"novel-proxy/internal/middleware"
+	"novel-proxy/internal/stats"
+	"novel-proxy/internal/upstream"
 )
 
 const testAdminPath = "x7k2p9"
@@ -416,5 +421,99 @@ func TestRateLimitsEndpoints(t *testing.T) {
 		`{"search":{"mode":"nope","per_minute":0,"burst":0},"detail":{"mode":"off","per_minute":0,"burst":0},"catalog":{"mode":"off","per_minute":0,"burst":0},"content":{"mode":"off","per_minute":0,"burst":0}}`, token)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("非法 mode 应 40001: %d", w.Code)
+	}
+}
+
+func TestConfigLogEndpoints(t *testing.T) {
+	// 需要 logx.Log：单独搭一个带日志句柄的环境。
+	dir := t.TempDir()
+	instancePath := filepath.Join(dir, "instance.yaml")
+	lh := logx.New("info", filepath.Join(dir, "app.log"), 50, 7, 14, true)
+	defer lh.Close()
+	cfg := &config.Config{}
+	cfg.Server.AdminPath = testAdminPath
+	au := stats.NewForTest(t)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/"+testAdminPath+"/api/config/log", GetLogConfig(lh, cfg))
+	r.PUT("/"+testAdminPath+"/api/config/log", PutLogConfig(lh, cfg, instancePath, au))
+
+	// GET 初始值。
+	w := getAdmin(r, "/"+testAdminPath+"/api/config/log", "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"level":"info"`) {
+		t.Fatalf("GET config/log = %d %s", w.Code, w.Body.String())
+	}
+	// PUT：level 立即生效。
+	w = putAdmin(r, "/"+testAdminPath+"/api/config/log",
+		`{"level":"debug","max_size_mb":50,"max_backups":7,"max_age_days":14,"compress":true}`, "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "立即生效") {
+		t.Fatalf("PUT level = %d %s", w.Code, w.Body.String())
+	}
+	if lh.Level() != "debug" {
+		t.Fatalf("level 未热更: %q", lh.Level())
+	}
+	// 写盘核验。
+	b, err := os.ReadFile(instancePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "level: debug") || !strings.Contains(string(b), "max_backups: 7") {
+		t.Fatalf("instance.yaml 未写入: %s", b)
+	}
+	// 非法 level。
+	w = putAdmin(r, "/"+testAdminPath+"/api/config/log",
+		`{"level":"trace","max_size_mb":50,"max_backups":7,"max_age_days":14,"compress":true}`, "")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("非法 level 应 40001: %d", w.Code)
+	}
+}
+
+func TestConfigUpstreamEndpoints(t *testing.T) {
+	dir := t.TempDir()
+	instancePath := filepath.Join(dir, "instance.yaml")
+	cfg := &config.Config{}
+	cfg.Server.AdminPath = testAdminPath
+	client := resty.New()
+	upstream.SetConcurrency(cfg.Upstream.MaxConcurrency)
+	au := stats.NewForTest(t)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/"+testAdminPath+"/api/config/upstream", GetUpstreamConfig(cfg))
+	r.PUT("/"+testAdminPath+"/api/config/upstream", PutUpstreamConfig(cfg, client, instancePath, au))
+
+	w := putAdmin(r, "/"+testAdminPath+"/api/config/upstream",
+		`{"timeout_seconds":7,"max_concurrency":3}`, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("PUT = %d %s", w.Code, w.Body.String())
+	}
+	if upstream.Concurrency() != 3 {
+		t.Fatalf("并发上限未立即生效: %d", upstream.Concurrency())
+	}
+	// 超时行为断言：回环慢服务（2s）+ 1s 超时必然失败。
+	// resty 的 Timeout 对自定义 Transport 不生效，走真实回环网络才套用。
+	slowSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second)
+	}))
+	defer slowSrv.Close()
+	client.SetTimeout(1 * time.Second)
+	start := time.Now()
+	_, rerr := client.R().Get(slowSrv.URL)
+	if rerr == nil || time.Since(start) > 1500*time.Millisecond {
+		t.Fatalf("超时应立即生效: err=%v elapsed=%v", rerr, time.Since(start))
+	}
+	b, err := os.ReadFile(instancePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "max_concurrency: 3") {
+		t.Fatalf("instance.yaml 未写入: %s", b)
+	}
+	// 越界值。
+	w = putAdmin(r, "/"+testAdminPath+"/api/config/upstream",
+		`{"timeout_seconds":0,"max_concurrency":1}`, "")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("越界应 40001: %d", w.Code)
 	}
 }

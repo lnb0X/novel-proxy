@@ -97,3 +97,15 @@ initguard 门禁行为）规格明确，待上面两点澄清后与页面一并�
       BACKLOG W13 验收条款；QUESTIONS Q2 / Q3 / Q4。
 影响：W13（本次跳过）。待 Q2 / Q3 / Q4 澄清并补齐 cache TTL 与
       max_concurrency 语义后，一次性实现缺失端点与全部十二页。
+
+## Q7 x/sync 信号量没有 SetLimit（W14 事实性偏差）
+问题：W14 写明「用 golang.org/x/sync/semaphore.Weighted，它支持 SetLimit」。
+      实测 go1.25 工具链能用的全部 x/sync 版本（v0.12 到 v0.15，
+      含模块图内的 v0.22）都没有 SetLimit——该方法在更新的 x/sync 里，
+      而那些版本要求 go >= 1.26，本机工具链装不上。
+      已改用互斥锁下重建 Weighted 的方式实现同一语义（运行期热调上限，
+      旧名额持有者继续用旧信号量释放），目标行为不变。
+证据：golang.org/x/sync@v0.22.0/semaphore/semaphore.go 无 SetLimit 方法；
+      go.mod 要求 go 1.25.0 的全部版本均无。
+影响：W14 已按替代实现完成，无阻塞；如需严格按 SetLimit 走，
+      需升级 Go 工具链到 1.26+。

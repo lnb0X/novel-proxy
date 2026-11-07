@@ -16,8 +16,13 @@ const searchURL = "https://novel.snssdk.com/api/novel/channel/homepage/search/se
 
 // FetchSearch 请求上游搜索接口，只发请求。
 // 上游参数风格：q / offset，offset = (page-1)*10。
-func FetchSearch(ctx context.Context, client *resty.Client, lg *slog.Logger, q string, page int) ([]byte, error) {
+func FetchSearch(ctx context.Context, client *resty.Client, lg *slog.Logger, timeoutSeconds int, q string, page int) ([]byte, error) {
 	start := time.Now()
+	release, aerr := acquireFetch(ctx, fetchTimeout(timeoutSeconds))
+	if aerr != nil {
+		return nil, aerr
+	}
+	defer release()
 	resp, err := client.R().
 		SetContext(ctx).
 		SetQueryParam("device_platform", "android").

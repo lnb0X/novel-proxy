@@ -95,11 +95,12 @@ func validateRuleSet(rs config.ContentRuleSet, scope string) error {
 
 // contentFetcher 预览用的取文适配：复用上游 Fetch/Parse。
 type contentFetcher struct {
-	client *resty.Client
+	client         *resty.Client
+	timeoutSeconds int
 }
 
 func (f contentFetcher) Fetch(ctx context.Context, chapterID string) ([]byte, error) {
-	return upstream.FetchContent(ctx, f.client, nil, chapterID)
+	return upstream.FetchContent(ctx, f.client, nil, f.timeoutSeconds, chapterID)
 }
 
 func (f contentFetcher) Parse(raw []byte) (string, error) {
@@ -114,6 +115,7 @@ func (f contentFetcher) Parse(raw []byte) (string, error) {
 // body { book_id, chapter_id } → { original, result, applied }。
 // 接管命中时 original 为 null（Q4）。
 func ContentRulesPreview(cfg *config.Config, client *resty.Client, st store.ArticleStore) gin.HandlerFunc {
+	fetcher := contentFetcher{client: client, timeoutSeconds: cfg.Upstream.TimeoutSeconds}
 	return func(c *gin.Context) {
 		var body struct {
 			BookID    string `json:"book_id"`
@@ -154,12 +156,12 @@ func ContentRulesPreview(cfg *config.Config, client *resty.Client, st store.Arti
 			}
 		}
 		if original == "" {
-			raw, ferr := contentFetcher{client}.Fetch(c.Request.Context(), chapterID)
+			raw, ferr := fetcher.Fetch(c.Request.Context(), chapterID)
 			if ferr != nil {
 				failUpstream(c, ferr)
 				return
 			}
-			original, ferr = contentFetcher{client}.Parse(raw)
+			original, ferr = fetcher.Parse(raw)
 			if ferr != nil {
 				failUpstreamBody(c, ferr)
 				return

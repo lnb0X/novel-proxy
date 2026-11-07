@@ -57,11 +57,12 @@ trace_id → recover → ipfilter → initguard → secret → auth
 - 环境变量：APP_MODE / APP_ADDR / APP_LOG_LEVEL / APP_STORAGE_DSN
 
 可热更（立即生效，写回 instance.yaml）：
-  log.level、log.max_size_mb、log.max_backups、log.max_age_days、
-  log.compress、flags.*、storage.enabled、rate_limit.*、ip_filter.*、
-  content_rules.*
+  log.level、flags.*、storage.enabled、rate_limit.*、ip_filter.*、
+  content_rules.*、upstream.timeout_seconds、upstream.max_concurrency
 需重启：
-  server.addr、server.admin_path、storage.driver、storage.dsn、log.file
+  server.addr、server.admin_path、storage.driver、storage.dsn、log.file、
+  log.max_size_mb、log.max_backups、log.max_age_days、log.compress
+  （lumberjack 的滚动参数在它自己的互斥锁里读，运行期不可变，见 W14）
 
 ## 配置 schema
 config.yaml，所有键可省略取默认值。未知键必须报错（KnownFields）。
@@ -172,6 +173,9 @@ articles 表（SQL）：
 Mongo：collection articles，唯一索引 {item_id}，普通索引 {book_id}
 
 content 入库时剥掉所有 img 标签，只留 p / br / 文字。
+
+文章缓存永不失效：没有 TTL 概念，/cache 管理接口的
+ttl_left_seconds 恒为 0（W14 裁决）。
 
 ## 明文约定
 命中缓存返回纯文字，未命中返回带图 HTML，同一章两次看不同，这是刻意取舍。

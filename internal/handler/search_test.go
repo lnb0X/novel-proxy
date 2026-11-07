@@ -12,13 +12,14 @@ import (
 	"github.com/go-resty/resty/v2"
 
 	"novel-proxy/internal/api"
+	"novel-proxy/internal/config"
 )
 
 // TestSearchRejectsEmptyQ 校验分支传 nil client：
 // 校验若放行就会调 FetchSearch 并在 nil client 上 panic，测试直接失败，
 // 以此证明校验发生在发请求之前。
 func TestSearchRejectsEmptyQ(t *testing.T) {
-	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/search", Search(nil)) })
+	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/search", Search(nil, &config.Config{})) })
 
 	for _, q := range []string{"", " ", "  \t "} {
 		vals := url.Values{}
@@ -35,7 +36,7 @@ func TestSearchRejectsEmptyQ(t *testing.T) {
 }
 
 func TestSearchRejectsNonIntegerPage(t *testing.T) {
-	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/search", Search(nil)) })
+	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/search", Search(nil, &config.Config{})) })
 	target := "/api/search?q=x&page=abc"
 	code, e := doJSON(t, r, target)
 	wantBadRequest(t, target, code, e)
@@ -61,7 +62,7 @@ func TestSearchPageClampedToOne(t *testing.T) {
 		}, nil
 	})
 	client := resty.New().SetTransport(rt)
-	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/search", Search(client)) })
+	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/search", Search(client, &config.Config{})) })
 
 	for _, page := range []string{"", "0", "-3"} {
 		vals := url.Values{"q": []string{"斗破苍穹"}}

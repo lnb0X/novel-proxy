@@ -9,11 +9,12 @@ import (
 	"github.com/go-resty/resty/v2"
 
 	"novel-proxy/internal/api"
+	"novel-proxy/internal/config"
 	"novel-proxy/internal/upstream"
 )
 
 // Search GET /api/search?q=&page=
-func Search(client *resty.Client) gin.HandlerFunc {
+func Search(client *resty.Client, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		q := strings.TrimSpace(c.Query("q"))
 		if q == "" {
@@ -37,7 +38,7 @@ func Search(client *resty.Client) gin.HandlerFunc {
 		lg := api.Logger(c)
 		c.Set("stats_query", q)
 		fetchStart := time.Now()
-		raw, err := upstream.FetchSearch(c.Request.Context(), client, lg, q, page)
+		raw, err := upstream.FetchSearch(c.Request.Context(), client, lg, cfg.Upstream.TimeoutSeconds, q, page)
 		api.SetUpstreamMS(c, time.Since(fetchStart).Milliseconds())
 		if err != nil {
 			failUpstream(c, err)
