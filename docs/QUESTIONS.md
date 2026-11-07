@@ -34,3 +34,46 @@ initguard 门禁行为）规格明确，待上面两点澄清后与页面一并�
 影响：W6（本次跳过）。W6 的令牌桶部分（global / per_ip / off、
       per_ip 回收与上限、429 + 42901 + Retry-After）规格明确，
       待持久化位置澄清后与开关一并实现。
+
+## Q3 W8 统计与审计的数据来源与可用条件
+问题：
+      1. request_log / audit_log 两张表建在哪里？AGENTS 存储层写明
+         「数据库只在 storage.enabled 时连接」，storage 关闭时统计与
+         审计三组接口的行为未定义（50301？50001？还是降级不可用）。
+      2. /stats/overview 的 upstream_health 如何判定（健康检查探测？
+         从 request_log 推导？）、version 取值来源，均未定义。
+      3. /stats/query 的 top_queries[]：request_log 的字段只有
+         time/path/status/code/duration_ms/upstream_ms/bytes/trace_id，
+         没有查询词，top_queries 的数据来源是什么？
+         cache_hit_rate 的命中 / 未命中计数由谁维护（ArticleStore
+         接口没有计数方法）。
+      4. 验收项「记录一次开关变更」依赖 W6 的开关接口，W6 已因 Q2 跳过。
+证据：DECISIONS「统计与审计」「存储」「配置 schema」；
+      CONTRACTS 第 7 节 stats / audit 三组接口；AGENTS「存储层」。
+影响：W8（本次跳过）。两张表的 DDL、90 天保留、审计事件清单本身
+      规格明确，待上面四点澄清后实现。
+
+## Q4 W9 内容规则 override 的命中语义
+问题：override（接管）是 *string，无 regex 标志位。「命中时不抓上游、
+      不查缓存、不写缓存」的前提下，可用作匹配输入的只有 book_id /
+      chapter_id / 路径等请求元数据。那么：
+      1. override 按什么匹配（章节 ID 正则？子串？），还是「配置非空
+         即接管、其字符串直接作为正文返回」？
+      2. 全局 default.override 非空时是否意味着所有书所有章节都被接管？
+      3. /content-rules/preview 返回 original: string|null，null 是否
+         对应 override 命中（因此未抓取原文）？applied 里 override 的
+         hits 如何计数？
+证据：DECISIONS「内容规则」「配置 schema」；CONTRACTS 第 7 节
+      /content-rules 与 /content-rules/preview。
+影响：W9（本次跳过）。prepend / append 的继承与抑制、replace 的
+      级联与顺序、管理接口形状均规格明确，待 override 语义澄清后实现。
+
+## Q5 W10 三个外部数据库无可用实例
+问题：本机没有可用的 postgres / mysql / mongo 实例（Windows 开发机，
+      无 Docker），W10 验收「三种库各走一遍 Init + Put + Get + Delete」
+      无法执行。按任务自身约定「没有可用实例的驱动，写 QUESTIONS.md
+      后跳过」。sqlite 驱动已在 W2 完成（modernc.org/sqlite v1.58.0，
+      纯 Go）。
+证据：BACKLOG W10 验收条款；本机环境无三个数据库的可用连接。
+影响：W10（本次跳过）。待提供三个库的连接方式（DSN 与实例）后实现
+      dialect.go 其余方言与 mongo.go，并跑通验收。
