@@ -23,7 +23,7 @@
         store 用内存库测试通过
       完成后 git tag W2-done
 
-- [ ] W3 init 向导（按 Q1 裁决：init 是 frontends 第三个 app）
+- [x] W3 init 向导（按 Q1 裁决：init 是 frontends 第三个 app）
       令牌门禁（生成 / 打印 / 写文件 / 复用 / 常量时间比较 / 失败限流）
       四步流程 + 内存草稿 + confirm 一次性写盘
       完成前任何路径 302 到 /init/（/api/* 返回 503 + 50302）
