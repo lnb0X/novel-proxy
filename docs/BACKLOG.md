@@ -93,7 +93,7 @@
         记录一次登录和一次开关变更后，审计接口能查到两条
       完成后 git tag W8-done
 
-- [ ] W9 内容规则
+- [x] W9 内容规则
       全局 + 按书，prepend / append / replace / override
       渲染时拼接，不入库
       预览接口
