@@ -58,7 +58,8 @@ trace_id → recover → ipfilter → initguard → secret → auth
 
 可热更（立即生效，写回 instance.yaml）：
   log.level、log.max_size_mb、log.max_backups、log.max_age_days、
-  log.compress、storage.enabled、rate_limit.*、ip_filter.*、content_rules.*
+  log.compress、flags.*、storage.enabled、rate_limit.*、ip_filter.*、
+  content_rules.*
 需重启：
   server.addr、server.admin_path、storage.driver、storage.dsn、log.file
 
@@ -79,6 +80,11 @@ setup.completed     bool    false
 admin.username      string  ""
 admin.password_hash string  ""
 server.admin_path   string  ""
+
+flags.search        bool    true
+flags.detail        bool    true
+flags.catalog       bool    true
+flags.content       bool    true
 
 storage.enabled     bool    false
 storage.driver      string  ""        sqlite / postgres / mysql / mongo
@@ -108,7 +114,11 @@ enum 字段取到非法值必须报错退出，不许兜底成默认值。
 - prepend / append：按书为 null 时继承全局；为空字符串时抑制全局
 - replace：全局规则按顺序执行完，再执行按书的规则；顺序在管理端可调
 - replace 是级联的，前一条的结果参与后一条匹配；支持勾选正则
-- override（接管）：命中时不抓上游、不查缓存、不写缓存、不执行其余规则
+- override（接管）：非空即接管，不做任何匹配。按书配置了 override，
+  这本书所有章节都被接管；全局 override 非空，全站所有章节都被接管。
+  接管时不抓上游、不查缓存、不写缓存、不执行其余规则，直接以
+  override 字符串作为正文返回。预览接口中接管时 original 为 null，
+  applied 记 { "rule": "book.override" 或 "global.override", "hits": 1 }
 - 拼接在响应时进行，结果不入库
 - 拼接内容不做安全过滤，管理员可写入任意 HTML，风险由 token 保管承担
 
@@ -179,6 +189,21 @@ content 入库时剥掉所有 img 标签，只留 p / br / 文字。
 - 回滚点记在 data/frontends/<app>-previous.json
 - 恢复手段：删除 data/frontends/admin-current.json 并重启，回落到 previous
 
+## init 页面
+- init 是 frontends 的第三个 app，复用同一套版本解析与目录约定；
+  -static 参数不作用于 init（它只替换根站点挂载）
+- 源码：web-init/，独立的 Vite + React + TS 应用，base '/init/'，
+  与管理端是两个构建产物
+- 部署：把构建产物放到 data/frontends/init/default/（或放到版本目录
+  再写 data/frontends/init-current.json），重启生效
+- 不重新编译 Go 就能换 init 前端
+- 兜底：data/frontends/init/ 不存在时，/init/ 返回一个写死在 Go 里的
+  固定说明页，写明应该把产物放到哪个绝对路径；不用 go:embed 塞第二套
+  init UI，避免与 React 那套分叉
+- data/frontends/init/ 不进 git，每个部署环境自己放一次，写进部署说明
+- 管理端的上传/切换接口仍然只接受 reader 和 admin；init 只能通过
+  文件系统更换，不走 web
+
 ## 日志
 - slog JSON，同时写 stdout 和文件
 - 级别映射见 CONTRACTS 第 0 节
@@ -186,13 +211,27 @@ content 入库时剥掉所有 img 标签，只留 p / br / 文字。
 
 ## 统计与审计
 - request_log：每请求一行，字段 time、path、status、code、
-  duration_ms、upstream_ms、bytes、trace_id
+  duration_ms、upstream_ms、bytes、trace_id、query（varchar(256)，
+  存 search 的 q，其余接口为空）
 - audit_log：time、event、actor、ip、ua、detail、result
 - 审计事件：login_success、login_fail、logout、password_change、
   force_logout、flag_change、rate_limit_change、ip_filter_change、
   cache_clear、rules_change、frontend_upload、frontend_activate、
   frontend_rollback、frontend_delete、config_change
 - 两张表都保留 90 天，超期清理
+- storage.enabled 为 false 时，stats 与 audit 三组接口一律返回
+  503 + 50301，msg 固定为「统计与审计需要开启文章缓存」
+- upstream_health 取最近 100 条 request_log 推导：5xx 或超时占比
+  大于 20% 为 down，大于 5% 为 degraded，否则 ok
+- top_queries 从 request_log.query 列聚合
+- cache_hit_rate 由 store 层维护两个 atomic 计数器（hits / misses），
+  stats 接口读取后计算比值；store 关闭时比率为 0
+
+## 安全基线
+- secret 路径存在性差异是已知取舍：错误路径 404、正确路径未登录 401。
+  401 是前端跳登录所必需，无法与 404 伪装同时消除
+- 响应 msg 不携带上游 URL、状态码、原始报文与 Go 错误细节，
+  真实错误只进日志；例外：50203 的上游业务 code 按契约写入 msg
 
 ## 404
 - 固定 HTML，零动态内容，状态码 404，Cache-Control: no-store

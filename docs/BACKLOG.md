@@ -23,12 +23,14 @@
         store 用内存库测试通过
       完成后 git tag W2-done
 
-- [ ] W3 init 向导
+- [ ] W3 init 向导（按 Q1 裁决：init 是 frontends 第三个 app）
       令牌门禁（生成 / 打印 / 写文件 / 复用 / 常量时间比较 / 失败限流）
       四步流程 + 内存草稿 + confirm 一次性写盘
       完成前任何路径 302 到 /init/（/api/* 返回 503 + 50302）
       完成后 /init/* 全部 404
-      init 页面为 React 应用，固定 base /init/
+      init 页面：web-init/ 独立 Vite + React + TS 应用，base '/init/'，
+      产物放 data/frontends/init/default/（或版本目录 + init-current.json），
+      重启生效；data/frontends/init/ 缺失时 /init/ 返回 Go 固定说明页
       验收：
         未初始化时 /api/search 返回 50302
         / 302 到 /init/

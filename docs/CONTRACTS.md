@@ -22,6 +22,8 @@
 
 HTTP 状态码与 code 对应。响应体在任何模式下结构一致，
 永远不带堆栈、不带上游原始报文、不带签名密钥。
+响应 msg 不携带上游 URL、状态码与 Go 错误细节，对外统一文案，
+真实错误只进日志；例外：50203 的上游业务 code 按本节规则写入 msg。
 
 日志级别：
 request.start      debug   method, path, query
@@ -165,9 +167,12 @@ PUT  /ip-filter                   body 同上
 GET  /stats/overview
   → { today_requests, today_errors, p95_ms, cache_hit_rate, per_api{},
       upstream_health, uptime_seconds, version, recent_errors[] }
+  storage.enabled 为 false 时返回 503 + 50301，
+  msg 固定 "统计与审计需要开启文章缓存"
 
 GET  /stats/query?from=&to=&api=
   → { buckets[], p50, p95, p99, error_codes{}, top_queries[], top_books[] }
+  storage.enabled 为 false 时同上返回 503 + 50301
 
 GET  /cache?book_id=&chapter_id=&page=&size=
   → { total, total_bytes, hit_rate, items[] }
@@ -211,3 +216,5 @@ app 取 reader 或 admin。
 GET  /audit?event=&from=&to=&page=&size=
   → { total, items[] }
     items: { ts, event, actor, ip, ua, detail, result }
+  storage.enabled 为 false 时返回 503 + 50301，
+  msg 固定 "统计与审计需要开启文章缓存"
