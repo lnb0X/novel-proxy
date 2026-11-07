@@ -120,7 +120,7 @@
         删除版本后目录消失
       完成后 git tag W11-done
 
-- [ ] W12 管理端骨架与登录
+- [x] W12 管理端骨架与登录
       Vite + React + TS + AntD，Hash 路由，base './'
       布局、侧边栏分组、认证拦截、401 跳登录
       /login 登录页
