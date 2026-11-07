@@ -131,8 +131,10 @@ func (f *IPFilter) Middleware() gin.HandlerFunc {
 			return
 		}
 		if isAdmin {
-			// 管理端被拒伪装成 404，不暴露路径存在性。
+			// 管理端被拒伪装成 404，不暴露路径存在性；
+			// 写页面后必须 Abort，否则下游 handler 继续执行。
 			frontend.NotFound(c.Writer)
+			c.Abort()
 			return
 		}
 		api.Fail(c, api.CodeIPRejected, "IP 被拒绝访问")

@@ -122,11 +122,23 @@ func main() {
 	secured.POST("/api/confirm", wizard.Confirm())
 	secured.POST("/api/cancel", wizard.Cancel())
 
-	// 管理端认证：admin_path 为空（未初始化）时不挂载任何管理路由。
-	if cfg.Server.AdminPath != "" {
-		authMgr := middleware.NewAuthManager(cfg.Server.AdminPath)
-		engine.Use(middleware.Auth(authMgr))
+	// 固定链尾段：auth（管理端）→ flags → ratelimit。
+	// 所有 Use 必须先于任何路由注册，gin 在注册时捕获链。
+	flagGate := middleware.NewFlags(cfg.Flags)
+	rateLimiter := middleware.NewRateLimiter(cfg.RateLimit, cfg.Server.AdminPath)
+	defer rateLimiter.Stop()
 
+	// 管理端认证：admin_path 为空（未初始化）时不挂载任何管理路由。
+	// authMgr 只建一次，中间件校验与 handler 签发必须同一把 key。
+	var authMgr *middleware.AuthManager
+	if cfg.Server.AdminPath != "" {
+		authMgr = middleware.NewAuthManager(cfg.Server.AdminPath)
+		engine.Use(middleware.Auth(authMgr))
+	}
+	engine.Use(flagGate.Middleware())
+	engine.Use(rateLimiter.Middleware())
+
+	if authMgr != nil {
 		admin := engine.Group("/" + cfg.Server.AdminPath)
 		admin.POST("/api/auth/login", handler.Login(authMgr, &cfg))
 		admin.POST("/api/auth/logout", handler.Logout(authMgr))
@@ -141,6 +153,10 @@ func main() {
 		admin.POST("/api/frontends/:app/confirm", handler.ConfirmFrontend(mgr))
 		admin.POST("/api/frontends/:app/rollback", handler.RollbackFrontend(mgr))
 		admin.DELETE("/api/frontends/:app/:version", handler.DeleteFrontend(mgr))
+		admin.GET("/api/flags", handler.GetFlags(flagGate))
+		admin.PUT("/api/flags/:name", handler.PutFlag(flagGate, &cfg, instancePath))
+		admin.GET("/api/rate-limits", handler.GetRateLimits(rateLimiter))
+		admin.PUT("/api/rate-limits", handler.PutRateLimits(rateLimiter, &cfg, instancePath))
 	}
 
 	// 静态目录解析：-static > 指针文件 > default/ 兜底 > 固定 404 页。

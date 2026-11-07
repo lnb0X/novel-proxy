@@ -35,6 +35,7 @@ func (g *InitGuard) Middleware() gin.HandlerFunc {
 				return
 			}
 			frontend.NotFound(c.Writer)
+			c.Abort()
 			return
 		}
 		if isInit {
@@ -45,7 +46,8 @@ func (g *InitGuard) Middleware() gin.HandlerFunc {
 			api.Fail(c, api.CodeNotInitialized, "服务尚未初始化，请先访问 /init/")
 			return
 		}
-		// 302 相对路径，兼容任意挂载前缀。
+		// 302 相对路径，兼容任意挂载前缀；Redirect 不中断链路，必须 Abort。
 		c.Redirect(http.StatusFound, "/init/")
+		c.Abort()
 	}
 }

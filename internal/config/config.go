@@ -37,6 +37,13 @@ type SetupConfig struct {
 	Completed bool `yaml:"completed"`
 }
 
+type FlagsConfig struct {
+	Search  bool `yaml:"search" json:"search"`
+	Detail  bool `yaml:"detail" json:"detail"`
+	Catalog bool `yaml:"catalog" json:"catalog"`
+	Content bool `yaml:"content" json:"content"`
+}
+
 type AdminConfig struct {
 	Username     string `yaml:"username"`
 	PasswordHash string `yaml:"password_hash"`
@@ -54,16 +61,16 @@ type UpstreamConfig struct {
 }
 
 type RateLimitRule struct {
-	Mode      string `yaml:"mode"`
-	PerMinute int    `yaml:"per_minute"`
-	Burst     int    `yaml:"burst"`
+	Mode      string `yaml:"mode" json:"mode"`
+	PerMinute int    `yaml:"per_minute" json:"per_minute"`
+	Burst     int    `yaml:"burst" json:"burst"`
 }
 
 type RateLimitConfig struct {
-	Search  RateLimitRule `yaml:"search"`
-	Detail  RateLimitRule `yaml:"detail"`
-	Catalog RateLimitRule `yaml:"catalog"`
-	Content RateLimitRule `yaml:"content"`
+	Search  RateLimitRule `yaml:"search" json:"search"`
+	Detail  RateLimitRule `yaml:"detail" json:"detail"`
+	Catalog RateLimitRule `yaml:"catalog" json:"catalog"`
+	Content RateLimitRule `yaml:"content" json:"content"`
 }
 
 type IPFilterConfig struct {
@@ -96,6 +103,7 @@ type Config struct {
 	Server       ServerConfig       `yaml:"server"`
 	Log          LogConfig          `yaml:"log"`
 	Setup        SetupConfig        `yaml:"setup"`
+	Flags        FlagsConfig        `yaml:"flags"`
 	Admin        AdminConfig        `yaml:"admin"`
 	Storage      StorageConfig      `yaml:"storage"`
 	Upstream     UpstreamConfig     `yaml:"upstream"`
@@ -116,6 +124,10 @@ func defaults() Config {
 	c.Log.MaxBackups = 14
 	c.Log.MaxAgeDays = 14
 	c.Log.Compress = true
+	c.Flags.Search = true
+	c.Flags.Detail = true
+	c.Flags.Catalog = true
+	c.Flags.Content = true
 	c.Upstream.TimeoutSeconds = 10
 	c.Upstream.MaxConcurrency = 8
 	c.RateLimit.Search.Mode = "off"

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"gopkg.in/yaml.v3"
 )
@@ -94,6 +95,8 @@ func valueNode(value any) (*yaml.Node, error) {
 			s = "true"
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: s}, nil
+	case int:
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(v)}, nil
 	case []string:
 		seq := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
 		for _, s := range v {

@@ -31,6 +31,7 @@ func newAdminEnv(t *testing.T) (*gin.Engine, *middleware.AuthManager, *config.Co
 	}
 	cfg := config.Config{}
 	cfg.Server.AdminPath = testAdminPath
+	cfg.Flags = config.FlagsConfig{Search: true, Detail: true, Catalog: true, Content: true}
 	cfg.Admin.Username = "boss"
 	cfg.Admin.PasswordHash = hash
 
@@ -38,6 +39,9 @@ func newAdminEnv(t *testing.T) (*gin.Engine, *middleware.AuthManager, *config.Co
 	if err != nil {
 		t.Fatal(err)
 	}
+	flagGate := middleware.NewFlags(cfg.Flags)
+	rateLimiter := middleware.NewRateLimiter(cfg.RateLimit, testAdminPath)
+	t.Cleanup(rateLimiter.Stop)
 
 	gin.SetMode(gin.TestMode)
 	auth := middleware.NewAuthManager(testAdminPath)
@@ -51,6 +55,10 @@ func newAdminEnv(t *testing.T) (*gin.Engine, *middleware.AuthManager, *config.Co
 	r.POST("/"+testAdminPath+"/api/account/password", ChangePassword(auth, &cfg, instancePath))
 	r.GET("/"+testAdminPath+"/api/ip-filter", GetIPFilter(ipFilter))
 	r.PUT("/"+testAdminPath+"/api/ip-filter", PutIPFilter(ipFilter, &cfg, instancePath))
+	r.GET("/"+testAdminPath+"/api/flags", GetFlags(flagGate))
+	r.PUT("/"+testAdminPath+"/api/flags/:name", PutFlag(flagGate, &cfg, instancePath))
+	r.GET("/"+testAdminPath+"/api/rate-limits", GetRateLimits(rateLimiter))
+	r.PUT("/"+testAdminPath+"/api/rate-limits", PutRateLimits(rateLimiter, &cfg, instancePath))
 	return r, auth, &cfg, instancePath
 }
 
@@ -340,4 +348,73 @@ func getAdmin(r *gin.Engine, path, tokenCookie string) *httptest.ResponseRecorde
 	}
 	r.ServeHTTP(w, req)
 	return w
+}
+
+func TestFlagsEndpoints(t *testing.T) {
+	r, _, cfg, instancePath := newAdminEnv(t)
+	token := loginAndGetToken(t, r)
+
+	w := getAdmin(r, "/"+testAdminPath+"/api/flags", token)
+	if !strings.Contains(w.Body.String(), `"search":true`) {
+		t.Fatalf("初始 flags 应全开: %s", w.Body.String())
+	}
+	w = putAdmin(r, "/"+testAdminPath+"/api/flags/search", `{"enabled":false}`, token)
+	if w.Code != http.StatusOK {
+		t.Fatalf("PUT flags = %d %s", w.Code, w.Body.String())
+	}
+	if cfg.Flags.Search {
+		t.Fatal("内存配置应同步关闭")
+	}
+	w = putAdmin(r, "/"+testAdminPath+"/api/flags/nope", `{"enabled":false}`, token)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("未知开关名应 40001: %d", w.Code)
+	}
+	b, err := os.ReadFile(instancePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "search: false") {
+		t.Fatalf("instance.yaml 未写入: %s", b)
+	}
+	// 重启持久化：从写盘的 instance 重新 Load，search 应为 false。
+	dir := filepath.Dir(instancePath)
+	cp := filepath.Join(dir, "..", "config.yaml")
+	os.WriteFile(cp, []byte(""), 0o644)
+	loaded, err := config.Load(cp, instancePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Flags.Search {
+		t.Fatal("重启后关闭状态应保持")
+	}
+}
+
+func TestRateLimitsEndpoints(t *testing.T) {
+	r, _, cfg, instancePath := newAdminEnv(t)
+	token := loginAndGetToken(t, r)
+
+	body := `{"search":{"mode":"global","per_minute":2,"burst":2},` +
+		`"detail":{"mode":"off","per_minute":0,"burst":0},` +
+		`"catalog":{"mode":"off","per_minute":0,"burst":0},` +
+		`"content":{"mode":"off","per_minute":0,"burst":0}}`
+	w := putAdmin(r, "/"+testAdminPath+"/api/rate-limits", body, token)
+	if w.Code != http.StatusOK {
+		t.Fatalf("PUT rate-limits = %d %s", w.Code, w.Body.String())
+	}
+	if cfg.RateLimit.Search.PerMinute != 2 {
+		t.Fatal("内存配置应同步")
+	}
+	b, err := os.ReadFile(instancePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "per_minute: 2") {
+		t.Fatalf("instance.yaml 未写入: %s", b)
+	}
+	// 非法 mode。
+	w = putAdmin(r, "/"+testAdminPath+"/api/rate-limits",
+		`{"search":{"mode":"nope","per_minute":0,"burst":0},"detail":{"mode":"off","per_minute":0,"burst":0},"catalog":{"mode":"off","per_minute":0,"burst":0},"content":{"mode":"off","per_minute":0,"burst":0}}`, token)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("非法 mode 应 40001: %d", w.Code)
+	}
 }

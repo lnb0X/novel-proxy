@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"novel-proxy/internal/config"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -75,4 +76,39 @@ func containsSub(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+func TestInitGuardRedirectAborts(t *testing.T) {
+	// 302 后下游 handler 不得执行。
+	gin.SetMode(gin.TestMode)
+	g := NewInitGuard(func() bool { return false })
+	r := gin.New()
+	r.Use(g.Middleware())
+	ran := false
+	r.GET("/", func(c *gin.Context) { ran = true; c.Status(200) })
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", nil))
+	if w.Code != http.StatusFound || ran {
+		t.Fatalf("应 302 且 handler 不执行: %d ran=%v", w.Code, ran)
+	}
+}
+
+func TestIPFilterAdminRejectAborts(t *testing.T) {
+	// 伪装 404 页之后下游 handler 不得执行。
+	gin.SetMode(gin.TestMode)
+	f, err := NewIPFilter(config.IPFilterConfig{Mode: "allow", Scope: "all", Rules: []string{"10.0.0.0/8"}}, "adm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := gin.New()
+	r.Use(f.Middleware())
+	ran := false
+	r.GET("/adm/api/secret", func(c *gin.Context) { ran = true; c.String(200, "secret") })
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/adm/api/secret", nil)
+	req.RemoteAddr = "8.8.8.8:1"
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound || ran || containsSub(w.Body.String(), "secret") {
+		t.Fatalf("应 404 页且 handler 不执行: %d ran=%v body=%q", w.Code, ran, w.Body.String())
+	}
 }
