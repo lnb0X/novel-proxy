@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -77,13 +76,7 @@ func main() {
 		swap.Set(frontend.FileServer(frontendDir))
 	}
 
-	engine.NoRoute(func(c *gin.Context) {
-		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
-			api.NoRoute(c)
-			return
-		}
-		swap.ServeHTTP(c.Writer, c.Request)
-	})
+	engine.NoRoute(api.SplitNoRoute(swap))
 
 	// 数据库只在 storage.enabled 时连接；未启用时 content 直接旁路缓存。
 	var articleStore store.ArticleStore

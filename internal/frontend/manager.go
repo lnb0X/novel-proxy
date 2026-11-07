@@ -112,17 +112,26 @@ func FileServer(dir string) http.Handler {
 		full := filepath.Join(dir, filepath.FromSlash(rel))
 		info, err := os.Stat(full)
 		if err != nil || info.IsDir() {
-			w.WriteHeader(http.StatusNotFound)
+			empty404(w)
 			return
 		}
 		f, err := os.Open(full)
 		if err != nil {
-			w.WriteHeader(http.StatusNotFound)
+			empty404(w)
 			return
 		}
 		defer f.Close()
 		http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 	})
+}
+
+// empty404 空 body 404。只 WriteHeader 不写 body 时，gin 会在 NoRoute
+// 链末尾补它的默认 404 文本，Flush 一次把空 body 定下来。
+func empty404(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusNotFound)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 func isDir(p string) bool {

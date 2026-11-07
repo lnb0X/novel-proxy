@@ -300,3 +300,29 @@ func TestPanicTraceIDConsistent(t *testing.T) {
 		t.Fatalf("trace_id 不一致: 日志 %v vs 响应 %q", errLine["trace_id"], resp.TraceID)
 	}
 }
+
+func TestSplitNoRoute(t *testing.T) {
+	// /api/* 走 JSON 封装；其余交给静态 handler。
+	// 静态未命中是空 body 404，gin 不允许在 NoRoute 链后补默认文本。
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.NoRoute(SplitNoRoute(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})))
+
+	w := do(r, http.MethodGet, "/api/nope")
+	if w.Code != http.StatusNotFound || !strings.Contains(w.Body.String(), `"code":40400`) {
+		t.Fatalf("/api/nope = %d %s", w.Code, w.Body.String())
+	}
+
+	w = do(r, http.MethodGet, "/some/page")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("static path = %d", w.Code)
+	}
+	if w.Body.Len() != 0 {
+		t.Fatalf("静态未命中应空 body, got %q", w.Body.String())
+	}
+}

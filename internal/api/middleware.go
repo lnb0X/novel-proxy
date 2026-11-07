@@ -4,7 +4,9 @@ import (
 	"crypto/rand"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -117,4 +119,16 @@ func RecoveryMiddleware(lg *slog.Logger, mode string) gin.HandlerFunc {
 // NoRoute 统一 JSON 404，格式与 /api/* 一致。
 func NoRoute(c *gin.Context) {
 	Fail(c, CodeNotFound, "路由不存在")
+}
+
+// SplitNoRoute 未匹配路由分流：/api/* 返回 JSON 404，
+// 其余路径交给静态 handler（未配置静态目录时是固定 HTML 404 页）。
+func SplitNoRoute(static http.Handler) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			NoRoute(c)
+			return
+		}
+		static.ServeHTTP(c.Writer, c.Request)
+	}
 }
