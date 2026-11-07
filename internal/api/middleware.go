@@ -65,7 +65,21 @@ func Logger(c *gin.Context) *slog.Logger {
 
 // SlogMiddleware 注入 trace_id 与请求级 logger，
 // 记 request.start（debug）与 response.end（info）。
-func SlogMiddleware(lg *slog.Logger) gin.HandlerFunc {
+// adminPath 非空时，管理端路径在日志中脱敏为 /<secret>/。
+func SlogMiddleware(lg *slog.Logger, adminPath string) gin.HandlerFunc {
+	mask := func(p string) string { return p }
+	if adminPath != "" {
+		prefix := "/" + adminPath
+		mask = func(p string) string {
+			if p == prefix {
+				return "/<secret>"
+			}
+			if strings.HasPrefix(p, prefix+"/") {
+				return "/<secret>" + strings.TrimPrefix(p, prefix)
+			}
+			return p
+		}
+	}
 	return func(c *gin.Context) {
 		start := time.Now()
 		tid := NewTraceID()
@@ -75,7 +89,7 @@ func SlogMiddleware(lg *slog.Logger) gin.HandlerFunc {
 
 		rl.Debug("request.start",
 			"method", c.Request.Method,
-			"path", c.Request.URL.Path,
+			"path", mask(c.Request.URL.Path),
 			"query", c.Request.URL.RawQuery,
 		)
 

@@ -22,7 +22,7 @@ func newTestLogger(t *testing.T) (*slog.Logger, *bytes.Buffer) {
 func newTestEngine(lg *slog.Logger, mode string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.Use(SlogMiddleware(lg), RecoveryMiddleware(lg, mode))
+	r.Use(SlogMiddleware(lg, ""), RecoveryMiddleware(lg, mode))
 	r.NoRoute(NoRoute)
 	return r
 }

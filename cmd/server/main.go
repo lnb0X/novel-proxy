@@ -19,6 +19,7 @@ import (
 	"novel-proxy/internal/frontend"
 	"novel-proxy/internal/handler"
 	"novel-proxy/internal/logx"
+	"novel-proxy/internal/middleware"
 	"novel-proxy/internal/store"
 	"novel-proxy/internal/upstream"
 )
@@ -60,7 +61,21 @@ func main() {
 	gin.SetMode(cfg.App.Mode)
 
 	engine := gin.New()
-	engine.Use(api.SlogMiddleware(lg), api.RecoveryMiddleware(lg, cfg.App.Mode))
+	engine.Use(api.SlogMiddleware(lg, cfg.Server.AdminPath), api.RecoveryMiddleware(lg, cfg.App.Mode))
+
+	// 管理端认证：admin_path 为空（未初始化）时不挂载任何管理路由。
+	// 固定中间件链中 auth 位于 recover 之后，ipfilter/initguard 随后续任务插入。
+	if cfg.Server.AdminPath != "" {
+		authMgr := middleware.NewAuthManager(cfg.Server.AdminPath)
+		engine.Use(middleware.Auth(authMgr))
+
+		admin := engine.Group("/" + cfg.Server.AdminPath)
+		admin.POST("/api/auth/login", handler.Login(authMgr, &cfg))
+		admin.POST("/api/auth/logout", handler.Logout(authMgr))
+		admin.GET("/api/auth/me", handler.Me())
+		admin.POST("/api/auth/revoke", handler.Revoke(authMgr))
+		admin.POST("/api/account/password", handler.ChangePassword(authMgr, &cfg, instancePath))
+	}
 
 	// 静态目录解析：-static > 指针文件 > default/ 兜底 > 固定 404 页。
 	// 目录由 manager 提供，运行期换目录只重设 swap 里的 handler。
