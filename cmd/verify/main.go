@@ -26,6 +26,15 @@ func run(name string, args ...string) error {
 	return c.Run()
 }
 
+func runIn(dir, name string, args ...string) error {
+	c := exec.Command(name, args...)
+	c.Dir = dir
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	c.Stdin = os.Stdin
+	return c.Run()
+}
+
 func fail(format string, a ...any) {
 	fmt.Printf("FAIL: "+format+"\n", a...)
 	os.Exit(1)
@@ -67,8 +76,22 @@ func main() {
 		}
 	}
 	fmt.Printf("    直接依赖 %d 个\n", direct)
-	if direct > 10 {
-		fail("直接依赖 %d 个，超过预算 10", direct)
+	if direct > 15 {
+		fail("直接依赖 %d 个，超过预算 15", direct)
+	}
+
+	if _, err := os.Stat("web/package.json"); err == nil {
+		if _, err := os.Stat("web/node_modules"); err != nil {
+			fail("web/node_modules 不存在，先在 web/ 下执行 npm install")
+		}
+		fmt.Println("==> 前端类型检查")
+		if err := runIn("web", "npx", "tsc", "--noEmit"); err != nil {
+			fail("前端类型检查未通过")
+		}
+		fmt.Println("==> 前端构建")
+		if err := runIn("web", "npm", "run", "build"); err != nil {
+			fail("前端构建未通过")
+		}
 	}
 
 	fmt.Println("==> emoji 检查")
@@ -79,7 +102,7 @@ func main() {
 		}
 		if info.IsDir() {
 			switch info.Name() {
-			case ".git", "node_modules", "testdata", "bin", "logs":
+			case ".git", "node_modules", "testdata", "bin", "logs", "data":
 				return filepath.SkipDir
 			}
 			return nil

@@ -1,73 +1,141 @@
 # BACKLOG
 
-## v0.1 四个接口
+## v0.2 管理端与基础设施
 
-- [x] T1 配置与日志
-      严格按这个顺序做：
-      1. 建 .gitignore：bin/、logs/、*.exe、.env、tmp/
-      2. 建 .gitattributes：* text=auto eol=lf
-      3. go mod init novel-proxy
-      4. 按 DECISIONS.md 的「配置 schema」生成 config.yaml，不要发明键名
-      5. 建目录骨架：cmd/server、internal/config、internal/logx、internal/api
-      6. 实现配置加载 + 日志初始化
-
-      注意：第 3 步之前 go run ./cmd/verify 会报 go.mod 不存在，这是正常的，
-      不要为此改任何代码。第 3 步之后再跑。
-
+- [ ] W1 配置分层
+      config.yaml 基础结构 + data/instance.yaml 覆盖 + env 覆盖
+      KnownFields 严格模式，enum 非法值报错退出
+      确认 .gitignore 含 data/
+      启动日志打印实际监听地址与实际使用的前端目录
       验收：
-        go test ./internal/config ./internal/logx 全绿
-        覆盖：默认值、yaml 覆盖、flag 覆盖、env 覆盖、非法 level 报错、未知键报错
-        go run ./cmd/server -config ./config.yaml 输出一条 JSON 到 stdout，
-        logs/app.log 内容相同
-        log.level 改 debug 后 debug 日志出现
-        max_size_mb 改 1 后出现轮转文件
-        git status 里看不到 logs/ 和 bin/ 下的任何文件
-      完成后 git tag T1-done
+        instance.yaml 覆盖 config.yaml 生效
+        APP_MODE 覆盖两者
+        未知键启动报错，enum 非法值启动报错
+        git status 里看不到 data/ 下的任何文件
+      完成后 git tag W1-done
 
-- [x] T2 gin 骨架与统一响应
-      gin.New() + 自写 slog 中间件 + 自写 recovery 中间件 + 统一响应封装
-      NoRoute 统一返回 JSON 404；app.mode 映射到 gin.SetMode
+- [ ] W2 ArticleStore + SQLite + content 接缓存
+      store 接口 + SQL 实现（先只接 sqlite）+ articles 表
+      content：查库 → 未命中抓上游 → 剥 img → 入库 → 返回
       验收：
-        curl http://localhost:8080/api/nope → 404，响应体是 JSON，含 code/msg/trace_id
-        curl http://localhost:8080/         → 404，同样是 JSON
-        上面两次请求之后，logs/app.log 里每次请求都有 request.start 和 response.end 两条，
-        且同一次请求的两条 trace_id 相同
-        日志里没有出现 gin 自己格式的行（例如 [GIN-debug] 或 [GIN]）
-        app.mode 改 debug 后，error 级日志开始带 stack 字段，HTTP 响应体不变
-      完成后 git tag T2-done
+        同一章第二次请求不打上游，返回纯文字
+        sqlite 里 content 不含 img 标签
+        store 用内存库测试通过
+      完成后 git tag W2-done
 
-- [x] T3 internal/upstream/search.go + GET /api/search
-      FetchSearch + ParseSearch，测试只测 ParseSearch
-      验收：curl 'http://localhost:8080/api/search?q=斗破苍穹&page=1' 返回 10 条，
-            book_id 是字符串，abstract 已 trim，has_more / next_offset 有值
-            q 为空时返回 40001
-      样本：q=斗破苍穹
+- [ ] W3 init 向导
+      令牌门禁（生成 / 打印 / 写文件 / 复用 / 常量时间比较 / 失败限流）
+      四步流程 + 内存草稿 + confirm 一次性写盘
+      完成前任何路径 302 到 /init/（/api/* 返回 503 + 50302）
+      完成后 /init/* 全部 404
+      init 页面为 React 应用，固定 base /init/
+      验收：
+        未初始化时 /api/search 返回 50302
+        / 302 到 /init/
+        错误令牌 5 次后锁定
+        confirm 之后 data/instance.yaml 出现且 setup.completed 为 true
+        重启后令牌不变
+      完成后 git tag W3-done
 
-- [x] T4 internal/upstream/detail.go + GET /api/detail
-      FetchDetail + ParseDetail
-      验收：book_id=7579985241087937560 返回 7 个字段齐全，word_number 是数字
-      样本：7579985241087937560（正常）、7645235352245667856（书不存在 → 502）
+- [ ] W4 静态服务
+      可换 handler（atomic 持有 http.Handler）
+      路径解析：-static > 指针文件 > default/ > 404
+      目录由 internal/frontend 的 manager 提供，不要在 handler 里写死路径
+      固定 404 页面；/api/* 的未知路径返回 JSON 404
+      验收：
+        -static 指向临时目录时能正常返回文件
+        不带 -static 且无指针时返回 404，日志说明原因
+        修改指针文件并触发重新加载后目录切换生效
+      完成后 git tag W4-done
 
-- [x] T5 internal/upstream/catalog.go + GET /api/catalog
-      FetchCatalog + ParseCatalog
-      验收：book_id=7579985241087937560 返回 58 章，volume 是空串，
-            chapters 顺序与 upstrTeam 的 allItemIds 一致
-      样本：7579985241087937560（58 章）、7542602438201576472（499 章）、
-            7637198840910580798（详情有目录空 → total: 0）
+- [ ] W5 JWT 认证
+      内存 key（atomic.Pointer）、签发、校验、滑动续期、绝对上限
+      login / logout / me / revoke
+      登录失败限流
+      管理端写操作校验 X-Admin-Request
+      验收：
+        Set-Cookie 含 HttpOnly 和 SameSite=Strict
+        剩余不足 10 分钟时响应带新 cookie
+        sat 过期后 401
+        密码错 5 次后返回 429
+        revoke 之后旧 token 立即 401
+        重启后旧 token 返回 401
+      完成后 git tag W5-done
 
-- [x] T6 internal/upstream/content.go + GET /api/content
-      FetchContent + ParseContent（Tokenizer 白名单过滤）
-      验收：四个样本全部符合预期，详见 docs/SAMPLES.md
-      完成后 git tag T6-done
+- [ ] W6 接口开关 + 限速
+      四个开关 + 热更 + 管理接口
+      令牌桶（global / per_ip / off），per_ip 回收和上限
+      验收：
+        关闭 search 后返回 503 + 50301，重启后状态保持
+        per_minute 设为 2 时第 3 次返回 429 带 Retry-After
+        per_ip 模式下两个不同来源互不影响
+      完成后 git tag W6-done
 
-- [x] T7 v0.1 收尾
-      handler 参数校验分支单测（nil client 证明校验先于发请求）、
-      docs/NOTES.md 记录 content 双 title 细节、tag v0.1.0
+- [ ] W7 IP 过滤
+      off / allow / block + scope + CIDR
+      /init/* 豁免，API 403，管理端 404
+      保存时锁死检查
+      验收：
+        allow 模式下非名单 IP 访问 /api/search 返回 403 + 40301
+        同一 IP 访问管理端路径返回 404
+        /init/ 不受影响
+        把自己排除在外的保存被拒绝
+      完成后 git tag W7-done
 
-- [x] T8 v0.1.1 契约变更
-      content 新增必填 book_id（校验后透传回填，上游仍只用 chapter_id），
-      detail / catalog 的 book_id 升级为 ^\d{1,20}$ 白名单，
-      parseID 统一映射 40001，破坏性变更无兼容期，tag v0.1.1
+- [ ] W8 统计与审计
+      request_log 与 audit_log 两张表 + 写入钩子 + 聚合查询
+      概览、查询、审计三组接口
+      验收：
+        发 10 次请求后概览计数为 10
+        按时间范围筛选结果正确
+        记录一次登录和一次开关变更后，审计接口能查到两条
+      完成后 git tag W8-done
 
-## v0.2
-静态文件服务、阅读端前端、管理端、缓存
+- [ ] W9 内容规则
+      全局 + 按书，prepend / append / replace / override
+      渲染时拼接，不入库
+      预览接口
+      验收：
+        全局 prepend 对所有书生效
+        某书设为空字符串后抑制全局 prepend
+        override 命中时不请求上游且日志有 content.overridden
+        replace 顺序不同结果不同
+        预览的 applied 带命中次数
+      完成后 git tag W9-done
+
+- [ ] W10 postgres / mysql / mongo 三个驱动
+      方言 DDL、连接测试、Init 幂等
+      验收：三种库各走一遍 Init + Put + Get + Delete
+      没有可用实例的驱动，写 QUESTIONS.md 后跳过
+      完成后 git tag W10-done
+
+- [ ] W11 前端版本管理
+      internal/frontend：版本目录、指针读写、上传解压、切换、回滚
+      五个管理接口
+      验收：
+        上传一个合法 zip 后出现新版本目录
+        上传缺少 index.html 的 zip 返回 40001
+        含 ../ 路径的 zip 被拒绝且不留下文件
+        activate 后未确认时自动回滚
+        删除版本后目录消失
+      完成后 git tag W11-done
+
+- [ ] W12 管理端骨架与登录
+      Vite + React + TS + AntD，Hash 路由，base './'
+      布局、侧边栏分组、认证拦截、401 跳登录
+      /login 登录页
+      / 概览页
+      完成后在 375px 和 1280px 各截一张图存 tmp/shots/，
+      对照 AGENTS.md 视觉红线自查
+      验收：登录后能看到概览数据，登出后访问任何页都跳登录
+      完成后 git tag W12-done
+
+- [ ] W13 管理端其余十二个页面
+      /flags /rate-limits /access /stats /cache /rules /frontends
+      /config/log /config/upstream /account /account/password /audit
+      每个页面完成后双宽度截图并自查
+      验收：CONTRACTS 第 7 节的每个操作都能在界面上完成
+      完成后 git tag W13-done
+
+## v0.3
+阅读端前端

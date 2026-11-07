@@ -1,114 +1,220 @@
 # DECISIONS
 已冻结。不得推翻，有异议写 QUESTIONS.md。
 
-## 定位
-薄壳。只做请求转发和字段映射。上游改版、反爬升级、多源适配由二开者处理。
-
-## 环境
-Windows。验收命令统一为 go run ./cmd/verify，不依赖 make、bash、grep。
-
 ## 模块
-- module 名：novel-proxy
-- 目录骨架（不要多建任何一层）：
-    cmd/server/main.go
-    cmd/verify/main.go              — 验收程序，项目所有者维护，agent 不得修改
-    internal/config/config.go
-    internal/logx/logx.go
-    internal/api/response.go        — 统一响应封装
-    internal/handler/*.go           — 四个 handler
-    internal/upstream/*.go          — 四个上游适配（Fetch + Parse）
+module 名：novel-proxy
+
+cmd/server/main.go
+cmd/verify/main.go              — 验收程序，项目所有者维护，agent 不得修改
+internal/config/                — 配置加载、分层、热更
+internal/logx/                  — slog + lumberjack
+internal/api/                   — 统一响应封装、错误码
+internal/middleware/            — trace_id、recover、ipfilter、initguard、
+                                  secret、auth、flags、ratelimit
+internal/handler/               — 公开接口 + init + admin
+internal/upstream/              — 四个上游适配
+internal/store/                 — ArticleStore 接口与四种实现
+internal/rules/                 — 内容拼接规则
+internal/stats/                 — 请求统计
+internal/audit/                 — 审计日志
+internal/frontend/              — 前端版本管理
+web/                            — 管理端 Vite 应用
 
 ## 构建
-- CGO_ENABLED=0，带 -trimpath -ldflags="-s -w"
-- 输出 bin/app.exe
-- 不提供 Makefile
+CGO_ENABLED=0，-trimpath -ldflags="-s -w"，输出 bin/app.exe。
 
-## 后端
-- Go 1.22+，Web 框架 gin
-- HTTP 客户端 go-resty/resty/v2，全局复用一个 client
-- 日志 log/slog，JSON handler，同时写 stdout 和文件
-- 日志滚动用 lumberjack，四个参数走配置
-- gin 的 Logger 和 Recovery 中间件全部禁用（不用 gin.Default()），
-  换成自写的 slog 中间件和 recovery 中间件
-- app.mode 只影响日志详细程度和 gin 的启动提示，不影响 HTTP 响应体。
-  两种模式下响应体完全一致，永远不带堆栈。
-  debug 模式下 error 级日志多一个 stack 字段。
-- app.mode 通过 gin.SetMode 设置：debug 用 gin.DebugMode，release 用 gin.ReleaseMode
-- 配置：YAML 文件 + flag + 环境变量，不引入 viper
-- 未匹配路由（NoRoute）统一返回 JSON 404
-- v0.1 不建数据库、不做缓存、不做持久化、不服务静态文件
-- HTML 解析用 golang.org/x/net/html 的 Tokenizer（流式过滤，不建 DOM）
+## 中间件顺序（固定，不得调整）
+trace_id → recover → ipfilter → initguard → secret → auth
+        → flags → ratelimit → handler
+
+## 认证
+- JWT HS256，签名 key 启动时 crypto/rand 生成 32 字节
+- key 只在内存，用 atomic.Pointer 持有，可并发安全地替换
+- claims：sub（用户名）、perm（"admin"）、iat、exp、sat
+- exp = iat + 30 分钟，滑动续期
+- sat = 首次登录 + 12 小时，绝对上限，续期不得越过
+- 续签时机：剩余有效期 < 10 分钟时才签新 token
+- 存放：HttpOnly Cookie，SameSite=Strict，Path=/<secret>，
+  Max-Age=1800，HTTPS 环境下加 Secure
+- 管理端所有非 GET 请求要求请求头 X-Admin-Request: 1
+- 强制登出即轮换签名 key，轮换后所有已签发 token 立即失效
+- 改密码成功后自动轮换签名 key，等同于一次强制登出
+- 服务重启同样使所有 token 失效
+- 不引入 token 版本号字段
+
+## 密码
+- bcrypt，cost 12
+- 长度 >= 12
+- 小写、大写、数字、符号四类中至少满足三类
+- 不得与用户名相同，不得包含用户名（忽略大小写）
+- 拒绝常见弱口令：password、qwerty、123456、admin、letmein
+- 前后端规则必须一致，后端为最终裁判
+
+## 配置
+优先级 env > data/instance.yaml > config.yaml
+- config.yaml：进 git，带注释和默认值，程序不写它
+- data/instance.yaml：不进 git，init 和运行期写入
+- 环境变量：APP_MODE / APP_ADDR / APP_LOG_LEVEL / APP_STORAGE_DSN
+
+可热更（立即生效，写回 instance.yaml）：
+  log.level、log.max_size_mb、log.max_backups、log.max_age_days、
+  log.compress、storage.enabled、rate_limit.*、ip_filter.*、content_rules.*
+需重启：
+  server.addr、server.admin_path、storage.driver、storage.dsn、log.file
 
 ## 配置 schema
-文件 config.yaml，所有键可省略，省略时用下列默认值。
-未知键必须报错退出（yaml.v3 的 KnownFields），防止拼写错误被静默忽略。
+config.yaml，所有键可省略取默认值。未知键必须报错（KnownFields）。
 
-| 键 | 类型 | 默认 | 取值 |
-|---|---|---|---|
-| app.mode | string | release | debug / release |
-| server.addr | string | :8080 | |
-| server.shutdown_timeout_seconds | int | 10 | |
-| log.level | string | info | debug / info / error |
-| log.file | string | ./logs/app.log | |
-| log.max_size_mb | int | 50 | |
-| log.max_backups | int | 7 | |
-| log.max_age_days | int | 14 | |
-| log.compress | bool | true | |
-| upstream.timeout_seconds | int | 10 | |
-| upstream.max_concurrency | int | 8 | |
+app.mode            string  release   debug / release
+server.addr         string  127.0.0.1:8080
+server.shutdown_timeout_seconds  int  10
+log.level           string  info      debug / info / error
+log.file            string  ./logs/app.log
+log.max_size_mb     int     50
+log.max_backups     int     14
+log.max_age_days    int     14
+log.compress        bool    true
 
-enum 类字段取到非法值时必须报错退出，不许兜底成默认值。
+setup.completed     bool    false
+admin.username      string  ""
+admin.password_hash string  ""
+server.admin_path   string  ""
 
-## 配置优先级
-- 文件路径：-config > APP_CONFIG > ./config.yaml
-- 键值覆盖：只有 app.mode、server.addr、log.level 支持环境变量
-  （APP_MODE / APP_ADDR / APP_LOG_LEVEL），其余只读 yaml
+storage.enabled     bool    false
+storage.driver      string  ""        sqlite / postgres / mysql / mongo
+storage.dsn         string  ""
 
-## 已批准的第三方模块
-- github.com/gin-gonic/gin
-- github.com/go-resty/resty/v2
-- gopkg.in/yaml.v3
-- gopkg.in/natefinch/lumberjack.v2
-- golang.org/x/net/html
-新增按 AGENTS.md 分层规则处理。
+upstream.timeout_seconds  int  10
+upstream.max_concurrency  int  8
 
-## 上游（三域名、三套参数风格，不要统一）
-| 接口 | 域名 | 方式 | 参数 |
-|---|---|---|---|
-| search | novel.snssdk.com | GET | q / offset |
-| detail | api5-sinfonlinec.novelfm.com | POST JSON | book_id |
-| catalog | fanqienovel.com | GET | bookId（驼峰） |
-| content | www.toutiao.com/article/{id}/ | GET | wid（毫秒时间戳）+ __ac_nonce cookie |
+rate_limit.<api>.mode        string  off     global / per_ip / off
+rate_limit.<api>.per_minute  int     0
+rate_limit.<api>.burst       int     0
 
-- book_id 在 search 和 detail 之间互通，不需要映射表
-- 封面图和正文图片都是带 x-expires 的签名 URL，约 7 天过期
+ip_filter.mode   string  off     off / allow / block
+ip_filter.scope  string  all     all / api / admin
+ip_filter.rules  []string []
 
-## 部署与前端（v0.2 才实现，v0.1 不碰）
-v0.1 不服务任何静态文件，也不要为下面这些预先写代码。
-- Go 单二进制 + 外置静态目录，不用 go:embed
-- 静态目录支持符号链接，切换链接即换前端，不重启
-- 解析顺序：-static 参数 > APP_STATIC_DIR 环境变量 > config.yaml
-- 静态服务必须实现 SPA 兜底：带扩展名或 /assets/ 前缀的路径找不到时返回 404
-- 单个 Vite + React + TypeScript 应用，strict 开启
-- 路由 React Router，BrowserRouter
-- 服务端状态 TanStack Query，本地状态 useState + Context
-- 阅读端纯 CSS + CSS 变量；AntD 仅用于管理端
-- 请求用原生 fetch
-- 路由表：
-    /                              搜索页
-    /books/:bookId                 详情页
-    /books/:bookId/toc             目录页
-    /books/:bookId/read/:chapterId 正文页
-- 阅读端视觉红线：正文直接落在页面背景上，禁止卡片/容器/边框/投影包裹；
-  禁止背景渐变、纹理、装饰图形、翻页动画；禁止顶部悬浮导航遮挡正文；
-  行宽不超过 38 字；中文正文 18px / 行高 1.85
+content_rules.default.prepend  *string  null
+content_rules.default.append   *string  null
+content_rules.default.replace  []Rule   []
+content_rules.default.override *string  null
+content_rules.books.<book_id>.{prepend,append,replace,override}
+
+enum 字段取到非法值必须报错退出，不许兜底成默认值。
+
+## 内容规则
+- 全局一套 + 按书覆盖，按书最多 100 本，每条 replace 最多 50 条
+- prepend / append：按书为 null 时继承全局；为空字符串时抑制全局
+- replace：全局规则按顺序执行完，再执行按书的规则；顺序在管理端可调
+- replace 是级联的，前一条的结果参与后一条匹配；支持勾选正则
+- override（接管）：命中时不抓上游、不查缓存、不写缓存、不执行其余规则
+- 拼接在响应时进行，结果不入库
+- 拼接内容不做安全过滤，管理员可写入任意 HTML，风险由 token 保管承担
+
+## 执行流程（/api/content）
+1. 检查接管规则，命中则直接返回自定义内容
+2. 查缓存，命中取原文；未命中抓上游、剥图、入库
+3. 应用 replace（全局 → 按书）
+4. 应用 prepend / append
+5. 返回
+
+## 限速
+- 每个接口独立配置：mode（global / per_ip / off）、per_minute、burst
+- 用 golang.org/x/time/rate 令牌桶
+- per_ip 的 limiter 每 5 分钟扫描，10 分钟无访问的删除
+- per_ip 的 map 上限 10000 条，超过后新 IP 按全局限流处理
+- 超限返回 429 + 42901 + Retry-After
+- 管理端 API 用固定的内部限额，不进配置界面
+- 登录失败锁定是独立机制：IP 5 次 / 账号 10 次
+
+## IP 过滤
+- mode：off / allow / block；scope：all / api / admin
+- 支持 CIDR，用 net/netip
+- /init/* 永不受影响
+- 公开 API 被拒返回 403 + 40301；管理端路径被拒返回 404
+- 保存时若当前 IP 不在新白名单内，拒绝保存
+- 名单最多 200 条
+- 不解析 X-Forwarded-For，IP 取 RemoteAddr（net.SplitHostPort）
+- 部署在反向代理后时 per_ip 会退化为全局限速
+
+## 存储
+ArticleStore 接口：
+  Init(ctx) error            — 建表/建索引，幂等
+  Ping(ctx) error
+  Get(ctx, bookID, itemID) (*Article, error)
+  Put(ctx, *Article) error   — upsert
+  Delete(ctx, bookID, itemID) error
+  DeleteByBook(ctx, bookID) (int64, error)
+  DeleteAll(ctx) (int64, error)
+  Count(ctx) (int64, error)
+  SumSize(ctx) (int64, error)
+
+articles 表（SQL）：
+  item_id     varchar(32)  主键
+  book_id     varchar(32)  NOT NULL，索引
+  title       varchar(512)
+  content     text
+  size_bytes  bigint
+  created_at  timestamp
+  updated_at  timestamp
+
+Mongo：collection articles，唯一索引 {item_id}，普通索引 {book_id}
+
+content 入库时剥掉所有 img 标签，只留 p / br / 文字。
+
+## 明文约定
+命中缓存返回纯文字，未命中返回带图 HTML，同一章两次看不同，这是刻意取舍。
+
+## 静态服务与前端版本
+- 版本目录：data/frontends/<app>/<version>/，app 取 reader 或 admin
+- 兜底目录：data/frontends/<app>/default/
+- 指针文件：data/frontends/<app>-current.json，内容 {"version": "..."}
+- 解析顺序：-static 参数 > 指针文件 > default/ > 返回 404
+- 切换：重写指针文件（先写 .tmp 再 os.Rename），并替换内存中的 handler
+- 运行期通过 atomic 持有 http.Handler 实现可换，不使用符号链接
+- 上传 zip：压缩包上限 50MB，解压后上限 200MB，根目录必须有 index.html
+- 解压必须防 zip slip
+- 切换管理端后 10 秒内未确认则自动回滚到上一版本
+- 回滚点记在 data/frontends/<app>-previous.json
+- 恢复手段：删除 data/frontends/admin-current.json 并重启，回落到 previous
+
+## 日志
+- slog JSON，同时写 stdout 和文件
+- 级别映射见 CONTRACTS 第 0 节
+- trace_id 贯穿，secret 路径在日志中脱敏为 /<secret>/
+
+## 统计与审计
+- request_log：每请求一行，字段 time、path、status、code、
+  duration_ms、upstream_ms、bytes、trace_id
+- audit_log：time、event、actor、ip、ua、detail、result
+- 审计事件：login_success、login_fail、logout、password_change、
+  force_logout、flag_change、rate_limit_change、ip_filter_change、
+  cache_clear、rules_change、frontend_upload、frontend_activate、
+  frontend_rollback、frontend_delete、config_change
+- 两张表都保留 90 天，超期清理
+
+## 404
+- 固定 HTML，零动态内容，状态码 404，Cache-Control: no-store
+- /api/* 的未知路径返回 JSON 404，不返回这个 HTML
+- 静态资源找不到返回空 body 404
+
+## 管理端页面（14 个，每个独立路由）
+/login
+/
+/flags
+/rate-limits
+/access
+/stats
+/cache
+/rules
+/frontends
+/config/log
+/config/upstream
+/account
+/account/password
+/audit
 
 ## 明确不用
-Next.js / Nuxt / Remix / Astro / Tailwind / shadcn / MUI / Chakra /
-Zustand / Redux / Jotai / Axios / styled-components / emotion / monorepo /
-viper / zap / logrus / echo / fiber / chi / goquery
-
-## 契约变更
-v0.1.1：content 新增必填参数 book_id；detail / catalog 的 book_id
-校验升级为格式白名单（^\d{1,20}$）。v0.1.0 的旧调用方会收到 40001，
-属于破坏性变更，无兼容期。
+Next.js / Nuxt / Tailwind / shadcn / MUI / Zustand / Redux / Axios /
+viper / zap / logrus / echo / fiber / chi / goquery / GORM / ent
