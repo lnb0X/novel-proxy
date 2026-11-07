@@ -128,7 +128,7 @@
       验收：登录后能看到概览数据，登出后访问任何页都跳登录
       完成后 git tag W12-done
 
-- [ ] W14 补三个后端缺口
+- [x] W14 补三个后端缺口
       1. GET/PUT /config/log
          - logx 增加 SetLevel，内部用 slog.LevelVar，立即生效
          - GET 返回 { level, max_size_mb, max_backups, max_age_days, compress }
