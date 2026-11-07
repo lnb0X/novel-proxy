@@ -64,7 +64,7 @@
         重启后旧 token 返回 401
       完成后 git tag W5-done
 
-- [ ] W6 接口开关 + 限速
+- [x] W6 接口开关 + 限速
       四个开关 + 热更 + 管理接口
       令牌桶（global / per_ip / off），per_ip 回收和上限
       验收：
