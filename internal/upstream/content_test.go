@@ -1,6 +1,7 @@
 package upstream
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -133,6 +134,26 @@ func TestParseContentFirstTitleWins(t *testing.T) {
 	}
 	if c.Title != "第1章 重生" {
 		t.Fatalf("title 应只取第一个 title 元素: %q", c.Title)
+	}
+}
+
+func TestParseContentLeavesBookIDEmpty(t *testing.T) {
+	// ParseContent 保持纯函数不收 book_id；出参结构必须带 book_id 字段，
+	// 由 handler 校验透传后回填。
+	raw := wrapBody(`<article class="syl-article-base"><p>x</p></article>`)
+	c, err := ParseContent([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.BookID != "" {
+		t.Fatalf("Parse 不应填 book_id: %q", c.BookID)
+	}
+	b, err := json.Marshal(Content{BookID: "7526452300462705689", ChapterID: "1", Title: "t", Content: "<p>x</p>"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"book_id":"7526452300462705689"`) {
+		t.Fatalf("出参 JSON 缺 book_id 字段: %s", b)
 	}
 }
 

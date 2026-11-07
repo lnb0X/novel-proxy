@@ -11,9 +11,9 @@ import (
 // Detail GET /api/detail?book_id=
 func Detail(client *resty.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		bookID := c.Query("book_id")
-		if bookID == "" {
-			api.Fail(c, api.CodeBadRequest, "参数 book_id 必填")
+		bookID, err := parseID("book_id", c.Query("book_id"))
+		if err != nil {
+			api.Fail(c, api.CodeBadRequest, err.Error())
 			return
 		}
 

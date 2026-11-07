@@ -56,7 +56,9 @@ func FetchContent(ctx context.Context, client *resty.Client, chapterID string) (
 }
 
 // Content GET /api/content 的 data，content 是过滤后的 HTML 字符串。
+// BookID 不参与解析，由 handler 校验透传后回填。
 type Content struct {
+	BookID    string `json:"book_id"`
 	ChapterID string `json:"chapter_id"`
 	Title     string `json:"title"`
 	Content   string `json:"content"`

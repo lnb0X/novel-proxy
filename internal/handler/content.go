@@ -10,12 +10,18 @@ import (
 	"novel-proxy/internal/upstream"
 )
 
-// Content GET /api/content?chapter_id=
+// Content GET /api/content?book_id=&chapter_id=
+// book_id 只做格式校验后透传回填，上游请求只用 chapter_id 构造。
 func Content(client *resty.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		chapterID := c.Query("chapter_id")
-		if chapterID == "" {
-			api.Fail(c, api.CodeBadRequest, "参数 chapter_id 必填")
+		bookID, err := parseID("book_id", c.Query("book_id"))
+		if err != nil {
+			api.Fail(c, api.CodeBadRequest, err.Error())
+			return
+		}
+		chapterID, err := parseID("chapter_id", c.Query("chapter_id"))
+		if err != nil {
+			api.Fail(c, api.CodeBadRequest, err.Error())
 			return
 		}
 
@@ -33,6 +39,7 @@ func Content(client *resty.Client) gin.HandlerFunc {
 			api.Fail(c, api.CodeUpstreamBizError, err.Error())
 			return
 		}
+		result.BookID = bookID
 		result.ChapterID = chapterID
 		api.OK(c, result)
 	}

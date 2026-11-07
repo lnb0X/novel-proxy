@@ -48,7 +48,7 @@ ID 类型：book_id 和 chapter_id 都是 19 位数字字符串，
 - 上游 search_id / log_id 只进日志，不下发
 
 ## 2. GET /api/detail
-入参：book_id string 必填，空值 → 40001
+入参：book_id string 必填，^\d{1,20}$
 上游：POST api5-sinfonlinec.novelfm.com/novelfm/bookapi/detail/v1/?aid=3040
       Content-Type: application/json，body {"book_id": "..."}
 出参 data：
@@ -61,7 +61,7 @@ ID 类型：book_id 和 chapter_id 都是 19 位数字字符串，
 - 上游 code=1001004 表示书不存在 → 502
 
 ## 3. GET /api/catalog
-入参：book_id string 必填，空值 → 40001
+入参：book_id string 必填，^\d{1,20}$
 上游：GET fanqienovel.com/api/reader/directory/detail?bookId={book_id}
 出参 data：
   { book_id, total, chapters[] }
@@ -80,13 +80,17 @@ ID 类型：book_id 和 chapter_id 都是 19 位数字字符串，
 - 上一章/下一章由前端按数组下标算，后端不提供
 
 ## 4. GET /api/content
-入参：chapter_id string 必填，空值 → 40001
+入参：book_id string 必填，^\d{1,20}$
+      chapter_id string 必填，^\d{1,20}$
 上游：GET www.toutiao.com/article/{chapter_id}/?wid={当前毫秒时间戳}
       headers：User-Agent（桌面 Chrome）、Referer: https://www.toutiao.com/、
       Cookie: __ac_nonce={11 字节随机数的 hex 前 21 位，用 crypto/rand}
 出参 data：
-  { chapter_id, title, content }   content 是 HTML 字符串
+  { book_id, chapter_id, title, content }   content 是 HTML 字符串
 实现要点：
+- book_id 只做格式校验后原样透传，不请求上游验证书是否存在
+- 上游请求只用 chapter_id 构造，book_id 不参与 URL
+- ParseContent 保持纯函数不收 book_id，解析成功后由 handler 回填
 - 正文容器：<article class="syl-article-base ...">
 - title 取 <title>，去掉结尾的 " - 今日头条"
 - 白名单：只保留 <p>、<img>、<br>

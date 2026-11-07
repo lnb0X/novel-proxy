@@ -107,3 +107,8 @@ v0.1 不服务任何静态文件，也不要为下面这些预先写代码。
 Next.js / Nuxt / Remix / Astro / Tailwind / shadcn / MUI / Chakra /
 Zustand / Redux / Jotai / Axios / styled-components / emotion / monorepo /
 viper / zap / logrus / echo / fiber / chi / goquery
+
+## 契约变更
+v0.1.1：content 新增必填参数 book_id；detail / catalog 的 book_id
+校验升级为格式白名单（^\d{1,20}$）。v0.1.0 的旧调用方会收到 40001，
+属于破坏性变更，无兼容期。
