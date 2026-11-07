@@ -1,5 +1,7 @@
 # BACKLOG
 
+> 未勾选的项按执行顺序排列。工作循环取最上面一个未勾选的，所以顺序即执行顺序。
+
 ## v0.2 管理端与基础设施
 
 - [x] W1 配置分层
@@ -105,12 +107,6 @@
         预览的 applied 带命中次数
       完成后 git tag W9-done
 
-- [ ] W10 postgres / mysql / mongo 三个驱动
-      方言 DDL、连接测试、Init 幂等
-      验收：三种库各走一遍 Init + Put + Get + Delete
-      没有可用实例的驱动，写 QUESTIONS.md 后跳过
-      完成后 git tag W10-done
-
 - [x] W11 前端版本管理
       internal/frontend：版本目录、指针读写、上传解压、切换、回滚
       五个管理接口
@@ -132,12 +128,88 @@
       验收：登录后能看到概览数据，登出后访问任何页都跳登录
       完成后 git tag W12-done
 
-- [ ] W13 管理端其余十二个页面
-      /flags /rate-limits /access /stats /cache /rules /frontends
-      /config/log /config/upstream /account /account/password /audit
-      每个页面完成后双宽度截图并自查
-      验收：CONTRACTS 第 7 节的每个操作都能在界面上完成
-      完成后 git tag W13-done
+- [ ] W14 补三个后端缺口
+      1. GET/PUT /config/log
+         - logx 增加 SetLevel，内部用 slog.LevelVar，立即生效
+         - GET 返回 { level, max_size_mb, max_backups, max_age_days, compress }
+         - PUT：level 立即生效；其余四项写回 data/instance.yaml，
+           返回 msg 说明「其余四项重启后生效」
+         - 理由：lumberjack 的字段在它自己的互斥锁里读，外部改是数据竞争，
+           而锁不导出；重建 writer 要换掉 slog handler，代价大于收益
+         - DECISIONS 把日志滚动四项从「可热更」移到「需重启」
+      2. GET/PUT /config/upstream
+         - GET 返回 { timeout_seconds, max_concurrency }
+         - PUT 写回 instance.yaml，两项都立即生效
+      3. 让 max_concurrency 真正生效
+         - upstream 包加全局信号量，包住四个 FetchXxx 的 HTTP 调用
+         - 用 golang.org/x/sync/semaphore.Weighted（第一层依赖），
+           它支持 SetLimit，运行中改并发数不用重建
+         - 获取时带 context，超时按 upstream.timeout_seconds 算
+      4. 埋 config_change 审计事件（DECISIONS 列了 15 类，实际只有 14 类）
+      5. DECISIONS 明写「文章缓存永不失效，/cache 的 ttl_left_seconds
+         恒为 0」，或把该字段从 CONTRACTS 删掉，二选一写进文档
+      验收：
+        四个 config 端点 curl 通
+        PUT level=debug 后立即可见 debug 日志，不需要重启
+        PUT max_size_mb 返回「重启后生效」的 msg
+        max_concurrency 设为 1，并发发 5 个 catalog，
+        日志里 upstream.response 的时间戳串行错开、不重叠
+        审计能查到 config_change
+      完成后 git tag W14-done
 
-## v0.3
-阅读端前端
+- [ ] W13a 管理端七个轻页面
+      /flags          四个开关，切换带二次确认
+      /rate-limits    四行 × (模式 / 每分钟 / 突发)
+      /access         模式 + 范围 + 名单增删，含锁死提示
+      /account        只读：用户名、权限、会话起止
+      /account/password 旧密码 + 新密码 + 确认
+      /config/log     五项，level 与其余四项要标明生效方式
+      /config/upstream  timeout 与 max_concurrency
+      每个页面：独立路由，不得用 Tab / Modal / Drawer 承载另一页内容；
+      完成后在 375px 和 1280px 各截一张图存 tmp/shots/，
+      对照 AGENTS.md 视觉红线自查
+      验收：
+        每页能完成 CONTRACTS 第 7 节对应的全部操作
+        表单校验失败有明确提示，不静默
+      完成后 git tag W13a-done
+
+- [ ] W13b 管理端四个重页面
+      /stats   时间范围筛选、请求量趋势、P50/P95/P99、错误码分布、
+               热门搜索词与热门书
+      /cache   按 book_id / chapter_id 搜索、分页、单条删、按书清空、
+               全清（二次确认 + 手输 DELETE）
+      /rules   全局三块 + 按书配置、replace 列表可上下移动、预览对比
+      /audit   表格 + 按事件类型与时间筛选 + 分页
+      验收：
+        /rules 调顺序后保存，预览结果随之变化
+        /cache 全清必须手输 DELETE 才放行
+        /audit 能筛出 login_success 与 flag_change
+        四页双宽度截图自查
+      完成后 git tag W13b-done
+
+- [ ] W10 三个数据库驱动
+      DSN 见 docs/QUESTIONS.md 的 Q5
+      1. dialect.go 增加 postgresDialect 与 mysqlDialect
+         - TEXT vs LONGTEXT、TIMESTAMPTZ vs DATETIME
+         - 占位符 $1/$2 vs ?
+         - 建表与建索引都必须幂等
+      2. sql.go 的 Open() 增加
+         case "postgres"（驱动名 pgx）与 case "mysql"
+      3. 新建 mongo.go，实现 ArticleStore 的九个方法
+         - collection articles，唯一索引 {item_id}，普通索引 {book_id}
+         - SumSize 用 $group + $sum 聚合
+         - Init 幂等：collection 已存在不算错，索引已存在也算正常
+      4. 新依赖（均第二层，commit message 写 dep: 行）
+         github.com/jackc/pgx/v5
+         github.com/go-sql-driver/mysql
+         go.mongodb.org/mongo-driver
+      5. 注意 sqlite 的 _pragma 拼接只对 sqlite 生效，
+         不要套到 postgres / mysql 上
+      验收（每个驱动各跑一遍，用 live，不进 go test）：
+        Init → Put 两条 → Get 比对内容 → Count 与 SumSize
+        → Delete 一条 → DeleteByBook → DeleteAll 归零
+        10 个 goroutine 并发 Put 不报错且 Count 正确
+      单测只测方言 DDL 的字符串输出，纯字符串断言，不连库
+      某个实例不可达时，把实际输出写进 QUESTIONS 标为环境不可达，
+      不要反复重试
+      完成后 git tag W10-done

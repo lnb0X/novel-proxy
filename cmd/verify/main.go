@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,21 +19,30 @@ var banned = []string{
 	"github.com/go-kit/",
 }
 
-func run(name string, args ...string) error {
+// extraEnv 只作用于本进程 spawn 的子进程，不改外部 shell 的环境。
+// 目前只有 -race 会用到（需要 CGO_ENABLED=1）。
+var extraEnv []string
+
+func command(dir, name string, args ...string) *exec.Cmd {
 	c := exec.Command(name, args...)
+	if dir != "" {
+		c.Dir = dir
+	}
+	if len(extraEnv) > 0 {
+		c.Env = append(os.Environ(), extraEnv...)
+	}
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 	c.Stdin = os.Stdin
-	return c.Run()
+	return c
+}
+
+func run(name string, args ...string) error {
+	return command("", name, args...).Run()
 }
 
 func runIn(dir, name string, args ...string) error {
-	c := exec.Command(name, args...)
-	c.Dir = dir
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	c.Stdin = os.Stdin
-	return c.Run()
+	return command(dir, name, args...).Run()
 }
 
 func fail(format string, a ...any) {
@@ -41,13 +51,24 @@ func fail(format string, a ...any) {
 }
 
 func main() {
+	race := flag.Bool("race", false, "开启数据竞争检测（需要 gcc，构建与运行都会变慢）")
+	flag.Parse()
+
+	testArgs := []string{"test"}
+	if *race {
+		extraEnv = []string{"CGO_ENABLED=1"}
+		testArgs = append(testArgs, "-race")
+		fmt.Println("==> 已开启 -race（CGO_ENABLED=1，仅作用于测试子进程）")
+	}
+	testArgs = append(testArgs, "./...")
+
 	fmt.Println("==> go vet")
 	if err := run("go", "vet", "./..."); err != nil {
 		fail("go vet 未通过")
 	}
 
 	fmt.Println("==> go test")
-	if err := run("go", "test", "./..."); err != nil {
+	if err := run("go", testArgs...); err != nil {
 		fail("go test 未通过")
 	}
 
