@@ -28,3 +28,9 @@
 | 7173216089122439711 | 含 1 张图，img src 必须是 p3-sign.toutiaoimg.com，不能是 data: |
 | 7587759954107304984 | 语音转写，tt-audio 和 span start_time 全部剥掉 |
 | 7579988172734467097 | 上游 404 → 返回 404 "该章节无文本内容" |
+## store 三驱动 live
+| 驱动 | 日期 | 结果 |
+|---|---|---|
+| postgres | 2026-11-07 | ALL PASS（全链路 + 并发 10 Put） |
+| mysql | 2026-11-07 | ALL PASS（全链路 + 并发 10 Put） |
+| mongo | 2026-11-08 | ALL PASS（全链路 + 并发 10 Put，authSource=<as>） |

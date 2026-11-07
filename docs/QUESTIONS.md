@@ -110,16 +110,11 @@ initguard 门禁行为）规格明确，待上面两点澄清后与页面一并�
 影响：W14 已按替代实现完成，无阻塞；如需严格按 SetLimit 走，
       需升级 Go 工具链到 1.26+。
 
-## Q8 W10 MongoDB 实例认证失败（环境不可达）
-问题：mongodb://<user>:<password>@<host>:27017/<db>?authSource=<as>
-      在 mongo-driver v1.17.1 下 SCRAM-SHA-1 与 SCRAM-SHA-256 两种机制
-      均返回 AuthenticationFailed，握手阶段认证失败（非网络不通——
-      TCP 与 SASL 协商均已到达服务端）。按任务约定三次尝试后停止，
-      实际报错如上。凭据可能已轮换或账号被删，待确认后重跑
-      go run ./tmp/w10live.go mongo <dsn> 即可完成验收
-      （验收驱动已写好，postgres 与 mysql 均已 ALL PASS）。
-证据：三次运行均返回 (AuthenticationFailed) Authentication failed，
-      机制分别为 SHA-1 / SHA-256 / SHA-1；postgres 与 mysql 用同主机
-      同段云实例验证通过，说明网络与流程本身没有问题。
-影响：W10 的 mongo 驱动代码已完成（mongo.go 九方法 + Open case +
-      DSN 库名解析），仅 live 验收未跑完；其余两项 ALL PASS。
+## Q8 W10 MongoDB 实例认证失败（已解决）
+根因：authSource 写错。用户 <user> 建在 <db> 库（面板显示「绑定用户 test，
+权限：数据库所有者」），不是 admin 库。DSN 改为
+authSource=<as> 后 2026-11-08 验收通过：mongo live 全链路 ALL PASS
+（Init/Put x2/Get/Count+SumSize/Delete/DeleteByBook/并发 10 Put/
+DeleteAll 归零），验收驱动 tmp/w10mongo.go（验收后删除）。
+原始报错记录：authSource=<as> 时 SCRAM-SHA-1 与 SHA-256 均返回
+AuthenticationFailed。
