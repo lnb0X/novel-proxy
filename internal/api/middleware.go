@@ -136,8 +136,9 @@ func NoRoute(c *gin.Context) {
 }
 
 // SplitNoRoute 未匹配路由分流：/api/*（含管理端 /<secret>/api/*）返回
-// JSON 404；管理端其余路径交给 admin 静态 handler；再其余交给 reader。
-func SplitNoRoute(adminPath string, admin, reader http.Handler) gin.HandlerFunc {
+// JSON 404；/init/* 交给 init 静态 handler；管理端其余路径交给 admin
+// 静态 handler；再其余交给 reader。
+func SplitNoRoute(adminPath string, admin, reader, initPage http.Handler) gin.HandlerFunc {
 	adminPrefix := "/" + adminPath
 	return func(c *gin.Context) {
 		p := c.Request.URL.Path
@@ -145,6 +146,10 @@ func SplitNoRoute(adminPath string, admin, reader http.Handler) gin.HandlerFunc 
 			(adminPath != "" && strings.HasPrefix(p, adminPrefix+"/api/"))
 		if isAPI {
 			NoRoute(c)
+			return
+		}
+		if p == "/init" || strings.HasPrefix(p, "/init/") {
+			initPage.ServeHTTP(c.Writer, c.Request)
 			return
 		}
 		if adminPath != "" && (p == adminPrefix || strings.HasPrefix(p, adminPrefix+"/")) {

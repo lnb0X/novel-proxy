@@ -302,15 +302,19 @@ func TestPanicTraceIDConsistent(t *testing.T) {
 }
 
 func TestSplitNoRoute(t *testing.T) {
-	// /api/* 走 JSON 封装；其余交给静态 handler。
+	// /api/* 走 JSON 封装；/init/* 与其余路径各自交给对应静态 handler。
 	// 静态未命中是空 body 404，gin 不允许在 NoRoute 链后补默认文本。
 	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.NoRoute(SplitNoRoute("", nil, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	empty404 := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
+	})
+	r := gin.New()
+	r.NoRoute(SplitNoRoute("", nil, empty404, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("init-page"))
 	})))
 
 	w := do(r, http.MethodGet, "/api/nope")
@@ -324,5 +328,10 @@ func TestSplitNoRoute(t *testing.T) {
 	}
 	if w.Body.Len() != 0 {
 		t.Fatalf("静态未命中应空 body, got %q", w.Body.String())
+	}
+
+	w = do(r, http.MethodGet, "/init/")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "init-page") {
+		t.Fatalf("/init/ 应走 init handler: %d %s", w.Code, w.Body.String())
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -92,6 +93,34 @@ func main() {
 		mgr.Mount("admin", adminSwap, "/"+cfg.Server.AdminPath)
 		mgr.Reload("admin")
 	}
+	// init 页面是 frontends 的第三个 app：指针 > default > Go 固定说明页，
+	// 重启生效；-static 不作用于它。
+	initSwap := &frontend.SwapHandler{}
+	mgr.Mount("init", initSwap, "/init")
+	mgr.Reload("init")
+	if dir, ok := mgr.Resolve("init"); ok {
+		initSwap.Set(frontend.FileServer(dir, "/init"))
+	} else {
+		initSwap.Set(frontend.InitFallbackPage(filepath.Join("data", "frontends", "init", "default")))
+	}
+
+	// 未初始化门禁：固定链中 ipfilter 之后、auth 之前。
+	initGuard := middleware.NewInitGuard(func() bool { return cfg.Setup.Completed })
+	engine.Use(initGuard.Middleware())
+
+	// init 向导路由：/init/* 是否可达由 guard 决定（完成后全部 404）。
+	// 令牌门禁在未初始化时启动：生成或复用 data/init-token.txt 并打印。
+	wizard := handler.NewInitWizard(&cfg, instancePath, "data", lg)
+	initGroup := engine.Group("/init")
+	initGroup.GET("/api/state", wizard.State())
+	initGroup.POST("/api/token", wizard.Token())
+	secured := initGroup.Group("", wizard.RequireSession())
+	secured.POST("/api/account", wizard.Account())
+	secured.POST("/api/storage", wizard.Storage())
+	secured.POST("/api/database/test", wizard.DatabaseTest())
+	secured.POST("/api/database", wizard.Database())
+	secured.POST("/api/confirm", wizard.Confirm())
+	secured.POST("/api/cancel", wizard.Cancel())
 
 	// 管理端认证：admin_path 为空（未初始化）时不挂载任何管理路由。
 	if cfg.Server.AdminPath != "" {
@@ -116,7 +145,7 @@ func main() {
 
 	// 静态目录解析：-static > 指针文件 > default/ 兜底 > 固定 404 页。
 
-	engine.NoRoute(api.SplitNoRoute(cfg.Server.AdminPath, adminSwap, swap))
+	engine.NoRoute(api.SplitNoRoute(cfg.Server.AdminPath, adminSwap, swap, initSwap))
 
 	// 数据库只在 storage.enabled 时连接；未启用时 content 直接旁路缓存。
 	var articleStore store.ArticleStore

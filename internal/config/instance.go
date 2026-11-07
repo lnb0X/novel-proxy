@@ -88,6 +88,12 @@ func valueNode(value any) (*yaml.Node, error) {
 	switch v := value.(type) {
 	case string:
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
+	case bool:
+		s := "false"
+		if v {
+			s = "true"
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: s}, nil
 	case []string:
 		seq := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
 		for _, s := range v {
