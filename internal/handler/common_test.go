@@ -37,6 +37,11 @@ func doJSON(t *testing.T, r *gin.Engine, target string) (int, envelope) {
 	return w.Code, e
 }
 
+// decodeData 解 data 字段到 v。
+func decodeData(raw json.RawMessage, v any) error {
+	return json.Unmarshal(raw, v)
+}
+
 // wantBadRequest 断言 400 + 40001 + data null。
 func wantBadRequest(t *testing.T, target string, code int, e envelope) {
 	t.Helper()

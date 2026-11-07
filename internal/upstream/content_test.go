@@ -186,3 +186,25 @@ func TestParseContentWrongClassNotCaptured(t *testing.T) {
 		t.Fatalf("content = %q", c.Content)
 	}
 }
+
+func TestStripImages(t *testing.T) {
+	in := `<p>前。</p><img src="https://p3-sign.toutiaoimg.com/a?x=1&amp;y=2">` +
+		`<img src="data:image/gif;base64,AA">` +
+		`<p>中&amp;文</p><br><p>尾。</p>`
+	want := `<p>前。</p><p>中&amp;文</p><br><p>尾。</p>`
+	if got := StripImages(in); got != want {
+		t.Fatalf("StripImages = %q, want %q", got, want)
+	}
+	if strings.Contains(StripImages(in), "<img") || strings.Contains(StripImages(in), "data:") {
+		t.Fatal("img 标签必须全部剥掉")
+	}
+	// 对 ParseContent 的输出应是恒等变换（无 img 时）。
+	page := wrapBody(`<article class="syl-article-base"><p>第一段</p><p>第二段</p></article>`)
+	parsed, err := ParseContent([]byte(page))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := StripImages(parsed.Content); got != parsed.Content {
+		t.Fatalf("无图内容不应改变:\n got %q\nwant %q", got, parsed.Content)
+	}
+}

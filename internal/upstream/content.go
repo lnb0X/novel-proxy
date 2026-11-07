@@ -192,3 +192,39 @@ func imgSrc(z *htmlparser.Tokenizer, hasAttr bool) (string, bool) {
 	}
 	return "", false
 }
+
+// StripImages 剥掉 HTML 里所有 img 标签，只留 p / br / 文字，入库前用。
+// 与 ParseContent 相同的 Tokenizer 处理：文本实体先解码再转义，
+// 对 ParseContent 的输出做一遍是恒等变换（除 img 外）。
+func StripImages(raw string) string {
+	var out strings.Builder
+	z := htmlparser.NewTokenizer(strings.NewReader(raw))
+	for {
+		tt := z.Next()
+		if tt == htmlparser.ErrorToken {
+			break
+		}
+		switch tt {
+		case htmlparser.StartTagToken, htmlparser.SelfClosingTagToken:
+			name, _ := z.TagName()
+			tag := strings.ToLower(string(name))
+			if tag == "img" {
+				continue
+			}
+			switch tag {
+			case "p":
+				out.WriteString("<p>")
+			case "br":
+				out.WriteString("<br>")
+			}
+		case htmlparser.EndTagToken:
+			name, _ := z.TagName()
+			if strings.ToLower(string(name)) == "p" {
+				out.WriteString("</p>")
+			}
+		case htmlparser.TextToken:
+			out.WriteString(html.EscapeString(string(z.Text())))
+		}
+	}
+	return out.String()
+}

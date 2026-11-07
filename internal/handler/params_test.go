@@ -28,14 +28,14 @@ func TestCatalogRejectsEmptyBookID(t *testing.T) {
 }
 
 func TestContentRejectsEmptyChapterID(t *testing.T) {
-	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/content", Content(nil)) })
+	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/content", Content(nil, nil)) })
 	target := "/api/content?book_id=1"
 	code, e := doJSON(t, r, target)
 	wantBadRequest(t, target, code, e)
 }
 
 func TestContentRequiresBookID(t *testing.T) {
-	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/content", Content(nil)) })
+	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/content", Content(nil, nil)) })
 	for _, target := range []string{
 		"/api/content?chapter_id=1",
 		"/api/content?book_id=abc&chapter_id=1",
@@ -59,7 +59,7 @@ func TestContentEchoesBookID(t *testing.T) {
 		}, nil
 	})
 	client := resty.New().SetTransport(rt)
-	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/content", Content(client)) })
+	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/content", Content(client, nil)) })
 
 	target := "/api/content?book_id=7526452300462705689&chapter_id=7526766660229808665"
 	code, e := doJSON(t, r, target)

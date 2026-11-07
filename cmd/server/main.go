@@ -17,6 +17,7 @@ import (
 	"novel-proxy/internal/config"
 	"novel-proxy/internal/handler"
 	"novel-proxy/internal/logx"
+	"novel-proxy/internal/store"
 	"novel-proxy/internal/upstream"
 )
 
@@ -57,11 +58,30 @@ func main() {
 	engine.Use(api.SlogMiddleware(lg), api.RecoveryMiddleware(lg, cfg.App.Mode))
 	engine.NoRoute(api.NoRoute)
 
+	// 数据库只在 storage.enabled 时连接；未启用时 content 直接旁路缓存。
+	var articleStore store.ArticleStore
+	if cfg.Storage.Enabled {
+		st, err := store.Open(cfg.Storage.Driver, cfg.Storage.DSN)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "初始化存储失败:", err)
+			os.Exit(1)
+		}
+		if err := st.Init(context.Background()); err != nil {
+			fmt.Fprintln(os.Stderr, "初始化存储失败:", err)
+			os.Exit(1)
+		}
+		if err := st.Ping(context.Background()); err != nil {
+			fmt.Fprintln(os.Stderr, "存储连接失败:", err)
+			os.Exit(1)
+		}
+		articleStore = st
+	}
+
 	client := upstream.NewClient(cfg.Upstream.TimeoutSeconds)
 	engine.GET("/api/search", handler.Search(client))
 	engine.GET("/api/detail", handler.Detail(client))
 	engine.GET("/api/catalog", handler.Catalog(client))
-	engine.GET("/api/content", handler.Content(client))
+	engine.GET("/api/content", handler.Content(client, articleStore))
 
 	srv := &http.Server{Addr: cfg.Server.Addr, Handler: engine}
 	go func() {
