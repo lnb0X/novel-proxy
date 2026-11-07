@@ -8,3 +8,5 @@ tmp_*.log
 data/
 web/dist/
 web/node_modules/
+web-init/dist/
+web-init/node_modules/
