@@ -63,6 +63,21 @@ func Logger(c *gin.Context) *slog.Logger {
 	return c.MustGet(keyLogger).(*slog.Logger)
 }
 
+// Code 返回本请求已写入的业务码（统计钩子用）。
+func Code(c *gin.Context) int {
+	return c.GetInt(keyCode)
+}
+
+// SetUpstreamMS 记录本请求上游耗时，统计钩子读取。
+func SetUpstreamMS(c *gin.Context, ms int64) {
+	c.Set("upstream_ms", ms)
+}
+
+// UpstreamMS 返回本请求上游耗时。
+func UpstreamMS(c *gin.Context) int64 {
+	return c.GetInt64("upstream_ms")
+}
+
 // SlogMiddleware 注入 trace_id 与请求级 logger，
 // 记 request.start（debug）与 response.end（info）。
 // adminPath 非空时，管理端路径在日志中脱敏为 /<secret>/。

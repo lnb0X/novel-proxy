@@ -3,6 +3,7 @@ package handler
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-resty/resty/v2"
@@ -34,7 +35,10 @@ func Search(client *resty.Client) gin.HandlerFunc {
 		}
 
 		lg := api.Logger(c)
+		c.Set("stats_query", q)
+		fetchStart := time.Now()
 		raw, err := upstream.FetchSearch(c.Request.Context(), client, lg, q, page)
+		api.SetUpstreamMS(c, time.Since(fetchStart).Milliseconds())
 		if err != nil {
 			failUpstream(c, err)
 			return

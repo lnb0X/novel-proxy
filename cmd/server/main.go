@@ -21,6 +21,7 @@ import (
 	"novel-proxy/internal/handler"
 	"novel-proxy/internal/logx"
 	"novel-proxy/internal/middleware"
+	"novel-proxy/internal/stats"
 	"novel-proxy/internal/store"
 	"novel-proxy/internal/upstream"
 )
@@ -62,7 +63,22 @@ func main() {
 	gin.SetMode(cfg.App.Mode)
 
 	engine := gin.New()
-	engine.Use(api.SlogMiddleware(lg, cfg.Server.AdminPath), api.RecoveryMiddleware(lg, cfg.App.Mode))
+	engine.Use(api.SlogMiddleware(lg, cfg.Server.AdminPath))
+
+	// 统计钩子：紧随 trace_id，包裹全部后续中间件（含 recover，panic 也记录）。
+	// 与文章缓存同库；storage 未启用时为 nil，三组统计接口返回 50301。
+	var statStore *stats.Stats
+	var counters *store.CountingStore
+	if cfg.Storage.Enabled {
+		ss, serr := stats.New(cfg.Storage.Driver, cfg.Storage.DSN, lg)
+		if serr != nil {
+			fmt.Fprintln(os.Stderr, "初始化统计失败:", serr)
+			os.Exit(1)
+		}
+		statStore = ss
+	}
+	engine.Use(statStore.Middleware())
+	engine.Use(api.RecoveryMiddleware(lg, cfg.App.Mode))
 
 	// 固定链：ipfilter 在 recover 之后、auth 之前。
 	ipFilter, err := middleware.NewIPFilter(cfg.IPFilter, cfg.Server.AdminPath)
@@ -122,6 +138,28 @@ func main() {
 	secured.POST("/api/confirm", wizard.Confirm())
 	secured.POST("/api/cancel", wizard.Cancel())
 
+	// 数据库只在 storage.enabled 时连接；未启用时 content 直接旁路缓存。
+	// counters 包装 store 维护命中计数（Q3-4），同时是统计与审计的存储底座。
+	var articleStore store.ArticleStore
+	if cfg.Storage.Enabled {
+		st, err := store.Open(cfg.Storage.Driver, cfg.Storage.DSN)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "初始化存储失败:", err)
+			os.Exit(1)
+		}
+		if err := st.Init(context.Background()); err != nil {
+			fmt.Fprintln(os.Stderr, "初始化存储失败:", err)
+			os.Exit(1)
+		}
+		if err := st.Ping(context.Background()); err != nil {
+			fmt.Fprintln(os.Stderr, "存储连接失败:", err)
+			os.Exit(1)
+		}
+		counters = store.Count(st)
+		articleStore = counters
+	}
+	startedAt := time.Now()
+
 	// 固定链尾段：auth（管理端）→ flags → ratelimit。
 	// 所有 Use 必须先于任何路由注册，gin 在注册时捕获链。
 	flagGate := middleware.NewFlags(cfg.Flags)
@@ -140,47 +178,35 @@ func main() {
 
 	if authMgr != nil {
 		admin := engine.Group("/" + cfg.Server.AdminPath)
-		admin.POST("/api/auth/login", handler.Login(authMgr, &cfg))
-		admin.POST("/api/auth/logout", handler.Logout(authMgr))
+		admin.POST("/api/auth/login", handler.Login(authMgr, &cfg, statStore))
+		admin.POST("/api/auth/logout", handler.Logout(authMgr, statStore))
 		admin.GET("/api/auth/me", handler.Me())
-		admin.POST("/api/auth/revoke", handler.Revoke(authMgr))
-		admin.POST("/api/account/password", handler.ChangePassword(authMgr, &cfg, instancePath))
+		admin.POST("/api/auth/revoke", handler.Revoke(authMgr, statStore))
+		admin.POST("/api/account/password", handler.ChangePassword(authMgr, &cfg, instancePath, statStore))
 		admin.GET("/api/ip-filter", handler.GetIPFilter(ipFilter))
-		admin.PUT("/api/ip-filter", handler.PutIPFilter(ipFilter, &cfg, instancePath))
+		admin.PUT("/api/ip-filter", handler.PutIPFilter(ipFilter, &cfg, instancePath, statStore))
 		admin.GET("/api/frontends", handler.ListFrontends(mgr))
-		admin.POST("/api/frontends/:app/upload", handler.UploadFrontend(mgr))
-		admin.POST("/api/frontends/:app/activate", handler.ActivateFrontend(mgr))
-		admin.POST("/api/frontends/:app/confirm", handler.ConfirmFrontend(mgr))
-		admin.POST("/api/frontends/:app/rollback", handler.RollbackFrontend(mgr))
-		admin.DELETE("/api/frontends/:app/:version", handler.DeleteFrontend(mgr))
+		admin.POST("/api/frontends/:app/upload", handler.UploadFrontend(mgr, statStore))
+		admin.POST("/api/frontends/:app/activate", handler.ActivateFrontend(mgr, statStore))
+		admin.POST("/api/frontends/:app/confirm", handler.ConfirmFrontend(mgr, statStore))
+		admin.POST("/api/frontends/:app/rollback", handler.RollbackFrontend(mgr, statStore))
+		admin.DELETE("/api/frontends/:app/:version", handler.DeleteFrontend(mgr, statStore))
 		admin.GET("/api/flags", handler.GetFlags(flagGate))
-		admin.PUT("/api/flags/:name", handler.PutFlag(flagGate, &cfg, instancePath))
+		admin.PUT("/api/flags/:name", handler.PutFlag(flagGate, &cfg, instancePath, statStore))
 		admin.GET("/api/rate-limits", handler.GetRateLimits(rateLimiter))
-		admin.PUT("/api/rate-limits", handler.PutRateLimits(rateLimiter, &cfg, instancePath))
+		admin.PUT("/api/rate-limits", handler.PutRateLimits(rateLimiter, &cfg, instancePath, statStore))
+		admin.GET("/api/stats/overview", handler.RequireStats(statStore), handler.StatsOverview(statStore, counters, startedAt))
+		admin.GET("/api/stats/query", handler.RequireStats(statStore), handler.StatsQuery(statStore))
+		admin.GET("/api/audit", handler.RequireStats(statStore), handler.AuditList(statStore))
+		admin.GET("/api/cache", handler.RequireStats(statStore), handler.CacheList(statStore, counters))
+		admin.DELETE("/api/cache/:item_id", handler.RequireStats(statStore), handler.CacheDeleteItem(statStore, articleStore))
+		admin.DELETE("/api/cache", handler.RequireStats(statStore), handler.CacheDeleteByBook(statStore, articleStore))
+		admin.DELETE("/api/cache/all", handler.RequireStats(statStore), handler.CacheDeleteAll(statStore, articleStore))
 	}
 
 	// 静态目录解析：-static > 指针文件 > default/ 兜底 > 固定 404 页。
 
 	engine.NoRoute(api.SplitNoRoute(cfg.Server.AdminPath, adminSwap, swap, initSwap))
-
-	// 数据库只在 storage.enabled 时连接；未启用时 content 直接旁路缓存。
-	var articleStore store.ArticleStore
-	if cfg.Storage.Enabled {
-		st, err := store.Open(cfg.Storage.Driver, cfg.Storage.DSN)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "初始化存储失败:", err)
-			os.Exit(1)
-		}
-		if err := st.Init(context.Background()); err != nil {
-			fmt.Fprintln(os.Stderr, "初始化存储失败:", err)
-			os.Exit(1)
-		}
-		if err := st.Ping(context.Background()); err != nil {
-			fmt.Fprintln(os.Stderr, "存储连接失败:", err)
-			os.Exit(1)
-		}
-		articleStore = st
-	}
 
 	client := upstream.NewClient(cfg.Upstream.TimeoutSeconds)
 	engine.GET("/api/search", handler.Search(client))

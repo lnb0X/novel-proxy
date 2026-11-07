@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"time"
+
 	"errors"
 
 	"github.com/gin-gonic/gin"
@@ -45,7 +47,11 @@ func Content(client *resty.Client, st store.ArticleStore) gin.HandlerFunc {
 		}
 
 		lg := api.Logger(c)
+		fetchStart := time.Now()
 		raw, err := upstream.FetchContent(c.Request.Context(), client, lg, chapterID)
+		if err == nil {
+			api.SetUpstreamMS(c, time.Since(fetchStart).Milliseconds())
+		}
 		if err != nil {
 			if errors.Is(err, upstream.ErrNoText) {
 				api.Fail(c, api.CodeNotFound, "该章节无文本内容")

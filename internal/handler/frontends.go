@@ -7,6 +7,8 @@ import (
 
 	"novel-proxy/internal/api"
 	"novel-proxy/internal/frontend"
+	"novel-proxy/internal/middleware"
+	"novel-proxy/internal/stats"
 )
 
 func validApp(app string) bool {
@@ -31,7 +33,7 @@ func ListFrontends(m *frontend.Manager) gin.HandlerFunc {
 }
 
 // UploadFrontend POST /<secret>/api/frontends/:app/upload，multipart 字段 file。
-func UploadFrontend(m *frontend.Manager) gin.HandlerFunc {
+func UploadFrontend(m *frontend.Manager, au *stats.Stats) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		app := c.Param("app")
 		if !validApp(app) {
@@ -54,12 +56,14 @@ func UploadFrontend(m *frontend.Manager) gin.HandlerFunc {
 			api.Fail(c, api.CodeBadRequest, err.Error())
 			return
 		}
+		au.Audit("frontend_upload", actor(c), middleware.ClientIP(c.Request), c.Request.UserAgent(),
+			"app="+app+" version="+info.Version, "ok")
 		api.OK(c, info)
 	}
 }
 
 // ActivateFrontend POST /<secret>/api/frontends/:app/activate
-func ActivateFrontend(m *frontend.Manager) gin.HandlerFunc {
+func ActivateFrontend(m *frontend.Manager, au *stats.Stats) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		app := c.Param("app")
 		if !validApp(app) {
@@ -84,12 +88,14 @@ func ActivateFrontend(m *frontend.Manager) gin.HandlerFunc {
 			return
 		}
 		api.Logger(c).Info("frontend.activate", "app", app, "from", previous, "to", body.Version)
+		au.Audit("frontend_activate", actor(c), middleware.ClientIP(c.Request), c.Request.UserAgent(),
+			"app="+app+" from="+previous+" to="+body.Version, "ok")
 		api.OK(c, gin.H{"version": body.Version, "previous": previous, "confirm_within_seconds": int(within.Seconds())})
 	}
 }
 
 // ConfirmFrontend POST /<secret>/api/frontends/:app/confirm
-func ConfirmFrontend(m *frontend.Manager) gin.HandlerFunc {
+func ConfirmFrontend(m *frontend.Manager, au *stats.Stats) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		app := c.Param("app")
 		if !validApp(app) {
@@ -112,7 +118,7 @@ func ConfirmFrontend(m *frontend.Manager) gin.HandlerFunc {
 }
 
 // RollbackFrontend POST /<secret>/api/frontends/:app/rollback
-func RollbackFrontend(m *frontend.Manager) gin.HandlerFunc {
+func RollbackFrontend(m *frontend.Manager, au *stats.Stats) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		app := c.Param("app")
 		if !validApp(app) {
@@ -123,12 +129,14 @@ func RollbackFrontend(m *frontend.Manager) gin.HandlerFunc {
 			api.Fail(c, api.CodeBadRequest, err.Error())
 			return
 		}
+		au.Audit("frontend_rollback", actor(c), middleware.ClientIP(c.Request), c.Request.UserAgent(),
+			"app="+app, "ok")
 		api.OK(c, gin.H{"current": m.CurrentBasis(app)})
 	}
 }
 
 // DeleteFrontend DELETE /<secret>/api/frontends/:app/:version
-func DeleteFrontend(m *frontend.Manager) gin.HandlerFunc {
+func DeleteFrontend(m *frontend.Manager, au *stats.Stats) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		app := c.Param("app")
 		if !validApp(app) {
@@ -145,6 +153,8 @@ func DeleteFrontend(m *frontend.Manager) gin.HandlerFunc {
 			return
 		}
 		m.Reload(app)
+		au.Audit("frontend_delete", actor(c), middleware.ClientIP(c.Request), c.Request.UserAgent(),
+			"app="+app+" version="+version, "ok")
 		c.Status(204)
 	}
 }

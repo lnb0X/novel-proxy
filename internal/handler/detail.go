@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/go-resty/resty/v2"
 
@@ -18,7 +20,9 @@ func Detail(client *resty.Client) gin.HandlerFunc {
 		}
 
 		lg := api.Logger(c)
+		fetchStart := time.Now()
 		raw, err := upstream.FetchDetail(c.Request.Context(), client, lg, bookID)
+		api.SetUpstreamMS(c, time.Since(fetchStart).Milliseconds())
 		if err != nil {
 			failUpstream(c, err)
 			return

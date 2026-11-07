@@ -11,10 +11,11 @@ import (
 	"novel-proxy/internal/api"
 	"novel-proxy/internal/config"
 	"novel-proxy/internal/middleware"
+	"novel-proxy/internal/stats"
 )
 
 // Login POST /<secret>/api/auth/login
-func Login(auth *middleware.AuthManager, cfg *config.Config) gin.HandlerFunc {
+func Login(auth *middleware.AuthManager, cfg *config.Config, au *stats.Stats) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body struct {
 			Username string `json:"username"`
@@ -26,6 +27,7 @@ func Login(auth *middleware.AuthManager, cfg *config.Config) gin.HandlerFunc {
 		}
 		ip := middleware.ClientIP(c.Request)
 		if wait, ok := auth.LoginAllowed(ip, body.Username); !ok {
+			au.Audit("login_fail", body.Username, ip, c.Request.UserAgent(), "locked", "rate_limited")
 			seconds := int(wait.Seconds())
 			if seconds < 1 {
 				seconds = 1
@@ -36,10 +38,12 @@ func Login(auth *middleware.AuthManager, cfg *config.Config) gin.HandlerFunc {
 		}
 		if body.Username != cfg.Admin.Username || !middleware.CheckPassword(cfg.Admin.PasswordHash, body.Password) {
 			auth.LoginFailure(ip, body.Username)
+			au.Audit("login_fail", body.Username, ip, c.Request.UserAgent(), "password_mismatch", "fail")
 			api.Fail(c, api.CodeUnauthorized, "账号或密码错误")
 			return
 		}
 		auth.LoginSuccess(ip, body.Username)
+		au.Audit("login_success", body.Username, ip, c.Request.UserAgent(), "", "ok")
 		token, exp, sat := auth.Issue(body.Username)
 		http.SetCookie(c.Writer, auth.AuthCookie(c.Request, token))
 		api.OK(c, gin.H{
@@ -51,9 +55,10 @@ func Login(auth *middleware.AuthManager, cfg *config.Config) gin.HandlerFunc {
 }
 
 // Logout POST /<secret>/api/auth/logout：免 token，幂等清 cookie。
-func Logout(auth *middleware.AuthManager) gin.HandlerFunc {
+func Logout(auth *middleware.AuthManager, au *stats.Stats) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		http.SetCookie(c.Writer, auth.ClearCookie(c.Request))
+		au.Audit("logout", actor(c), middleware.ClientIP(c.Request), c.Request.UserAgent(), "", "ok")
 		c.Status(http.StatusNoContent)
 	}
 }
@@ -71,18 +76,19 @@ func Me() gin.HandlerFunc {
 }
 
 // Revoke POST /<secret>/api/auth/revoke：轮换 key 即强制登出。
-func Revoke(auth *middleware.AuthManager) gin.HandlerFunc {
+func Revoke(auth *middleware.AuthManager, au *stats.Stats) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth.Rotate()
 		http.SetCookie(c.Writer, auth.ClearCookie(c.Request))
 		api.Logger(c).Info("auth.revoke", "actor", c.GetString("auth_user"), "ip", middleware.ClientIP(c.Request))
+		au.Audit("force_logout", actor(c), middleware.ClientIP(c.Request), c.Request.UserAgent(), "", "ok")
 		c.Status(http.StatusNoContent)
 	}
 }
 
 // ChangePassword POST /<secret>/api/account/password：
 // 成功后写回 instance.yaml 并轮换签名 key，等同一次强制登出。
-func ChangePassword(auth *middleware.AuthManager, cfg *config.Config, instancePath string) gin.HandlerFunc {
+func ChangePassword(auth *middleware.AuthManager, cfg *config.Config, instancePath string, au *stats.Stats) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body struct {
 			OldPassword string `json:"old_password"`
@@ -118,6 +124,7 @@ func ChangePassword(auth *middleware.AuthManager, cfg *config.Config, instancePa
 		cfg.Admin.PasswordHash = hash
 		auth.Rotate()
 		http.SetCookie(c.Writer, auth.ClearCookie(c.Request))
+		au.Audit("password_change", actor(c), middleware.ClientIP(c.Request), c.Request.UserAgent(), "", "ok")
 		api.OKMsg(c, "密码已修改，请重新登录", nil)
 	}
 }
@@ -136,7 +143,7 @@ func GetIPFilter(f *middleware.IPFilter) gin.HandlerFunc {
 
 // PutIPFilter PUT /<secret>/api/ip-filter：整体替换并热更。
 // allow 模式下当前 IP 不在新名单则拒绝保存（锁死检查）。
-func PutIPFilter(f *middleware.IPFilter, cfg *config.Config, instancePath string) gin.HandlerFunc {
+func PutIPFilter(f *middleware.IPFilter, cfg *config.Config, instancePath string, au *stats.Stats) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body struct {
 			Mode  string   `json:"mode"`
@@ -199,6 +206,8 @@ func PutIPFilter(f *middleware.IPFilter, cfg *config.Config, instancePath string
 		cfg.IPFilter.Mode = body.Mode
 		cfg.IPFilter.Scope = body.Scope
 		cfg.IPFilter.Rules = body.Rules
+		au.Audit("ip_filter_change", actor(c), middleware.ClientIP(c.Request), c.Request.UserAgent(),
+			"mode="+body.Mode+" scope="+body.Scope+" rules="+strconv.Itoa(len(body.Rules)), "ok")
 		api.OK(c, gin.H{"mode": body.Mode, "scope": body.Scope, "rules": body.Rules})
 	}
 }

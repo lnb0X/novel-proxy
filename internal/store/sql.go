@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	// 纯 Go 的 SQLite 驱动，CGO_ENABLED=0 可编译，注册名为 sqlite。
@@ -29,6 +30,14 @@ func Open(driver, dsn string) (ArticleStore, error) {
 	case "":
 		return nil, fmt.Errorf("storage.driver 未配置")
 	case "sqlite":
+		// busy_timeout 兜住与统计连接之间的并发写锁竞争。
+		if dsn != ":memory:" && !strings.Contains(dsn, "_pragma") {
+			sep := "?"
+			if strings.Contains(dsn, "?") {
+				sep = "&"
+			}
+			dsn += sep + "_pragma=busy_timeout(5000)"
+		}
 		if dsn != ":memory:" {
 			// SQLite 不会创建父目录，落盘前先建。
 			if dir := filepath.Dir(dsn); dir != "" && dir != "." {

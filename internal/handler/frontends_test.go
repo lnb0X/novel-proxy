@@ -28,11 +28,11 @@ func newFrontendsEnv(t *testing.T) (*gin.Engine, *frontend.Manager, string) {
 	lg := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	r := gin.New()
 	r.Use(api.SlogMiddleware(lg, ""))
-	r.POST("/api/frontends/:app/upload", UploadFrontend(m))
-	r.POST("/api/frontends/:app/activate", ActivateFrontend(m))
-	r.POST("/api/frontends/:app/confirm", ConfirmFrontend(m))
-	r.POST("/api/frontends/:app/rollback", RollbackFrontend(m))
-	r.DELETE("/api/frontends/:app/:version", DeleteFrontend(m))
+	r.POST("/api/frontends/:app/upload", UploadFrontend(m, nil))
+	r.POST("/api/frontends/:app/activate", ActivateFrontend(m, nil))
+	r.POST("/api/frontends/:app/confirm", ConfirmFrontend(m, nil))
+	r.POST("/api/frontends/:app/rollback", RollbackFrontend(m, nil))
+	r.DELETE("/api/frontends/:app/:version", DeleteFrontend(m, nil))
 	r.GET("/api/frontends", ListFrontends(m))
 	return r, m, base
 }

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"gopkg.in/yaml.v3"
@@ -8,6 +9,7 @@ import (
 	"novel-proxy/internal/api"
 	"novel-proxy/internal/config"
 	"novel-proxy/internal/middleware"
+	"novel-proxy/internal/stats"
 )
 
 // GetFlags GET /<secret>/api/flags
@@ -18,7 +20,7 @@ func GetFlags(f *middleware.Flags) gin.HandlerFunc {
 }
 
 // PutFlag PUT /<secret>/api/flags/:name body { enabled }：热更并写盘。
-func PutFlag(f *middleware.Flags, cfg *config.Config, instancePath string) gin.HandlerFunc {
+func PutFlag(f *middleware.Flags, cfg *config.Config, instancePath string, au *stats.Stats) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
 		var body struct {
@@ -49,6 +51,8 @@ func PutFlag(f *middleware.Flags, cfg *config.Config, instancePath string) gin.H
 		case "content":
 			cfg.Flags.Content = body.Enabled
 		}
+		au.Audit("flag_change", actor(c), middleware.ClientIP(c.Request), c.Request.UserAgent(),
+			"name="+name+" enabled="+strconv.FormatBool(body.Enabled), "ok")
 		api.OK(c, gin.H{"name": name, "enabled": body.Enabled})
 	}
 }
@@ -61,7 +65,7 @@ func GetRateLimits(rl *middleware.RateLimiter) gin.HandlerFunc {
 }
 
 // PutRateLimits PUT /<secret>/api/rate-limits body 整体替换，热更并写盘。
-func PutRateLimits(rl *middleware.RateLimiter, cfg *config.Config, instancePath string) gin.HandlerFunc {
+func PutRateLimits(rl *middleware.RateLimiter, cfg *config.Config, instancePath string, au *stats.Stats) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body config.RateLimitConfig
 		if err := c.ShouldBindJSON(&body); err != nil {
@@ -103,6 +107,7 @@ func PutRateLimits(rl *middleware.RateLimiter, cfg *config.Config, instancePath 
 			return
 		}
 		cfg.RateLimit = body
+		au.Audit("rate_limit_change", actor(c), middleware.ClientIP(c.Request), c.Request.UserAgent(), "replaced", "ok")
 		api.OK(c, rl.Snapshot())
 	}
 }
