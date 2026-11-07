@@ -61,6 +61,8 @@ func Content(client *resty.Client, st store.ArticleStore) gin.HandlerFunc {
 
 		if st != nil {
 			// 入库前剥掉所有 img，只留 p / br / 文字。
+			// 写失败不拦请求：正文已经抓到，缓存缺失只记日志，
+			// 下次请求重新走未命中路径。
 			stripped := upstream.StripImages(result.Content)
 			err := st.Put(c.Request.Context(), &store.Article{
 				ItemID:  chapterID,
@@ -69,8 +71,7 @@ func Content(client *resty.Client, st store.ArticleStore) gin.HandlerFunc {
 				Content: stripped,
 			})
 			if err != nil {
-				api.Fail(c, api.CodeInternal, err.Error())
-				return
+				api.Logger(c).Error("error", "err", err.Error())
 			}
 		}
 

@@ -2,7 +2,9 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
@@ -115,5 +117,53 @@ func TestStoredContentHasNoImg(t *testing.T) {
 	}
 	if !strings.Contains(art.Content, "<p>") {
 		t.Fatalf("入库内容缺正文: %q", art.Content)
+	}
+}
+
+// putFailStore 只有 Put 会失败，验证写缓存失败不拦请求。
+type putFailStore struct{}
+
+func (s *putFailStore) Init(ctx context.Context) error { return nil }
+func (s *putFailStore) Ping(ctx context.Context) error { return nil }
+func (s *putFailStore) Get(ctx context.Context, b, i string) (*store.Article, error) {
+	return nil, store.ErrNotFound
+}
+func (s *putFailStore) Put(ctx context.Context, a *store.Article) error {
+	return errors.New("disk full")
+}
+func (s *putFailStore) Delete(ctx context.Context, b, i string) error { return store.ErrNotFound }
+func (s *putFailStore) DeleteByBook(ctx context.Context, b string) (int64, error) {
+	return 0, nil
+}
+func (s *putFailStore) DeleteAll(ctx context.Context) (int64, error) { return 0, nil }
+func (s *putFailStore) Count(ctx context.Context) (int64, error)     { return 0, nil }
+func (s *putFailStore) SumSize(ctx context.Context) (int64, error)   { return 0, nil }
+
+func TestPutFailureStillReturnsContent(t *testing.T) {
+	rt := &countingRT{}
+	client := resty.New().SetTransport(rt)
+	r := newValidationEngine(func(e *gin.Engine) {
+		e.GET("/api/content", Content(client, &putFailStore{}))
+	})
+	lg := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	// api.Logger 需要 SlogMiddleware 注入。
+	r.Use(func(c *gin.Context) {
+		c.Set("logger", lg.With("trace_id", "t"))
+		c.Set("trace_id", "t")
+		c.Next()
+	})
+
+	code, e := doJSON(t, r, "/api/content?book_id=1&chapter_id=7526766660229808665")
+	if code != http.StatusOK || e.Code != api.CodeOK {
+		t.Fatalf("Put 失败不应拦请求: HTTP %d code %d msg %s", code, e.Code, e.Msg)
+	}
+	var data struct {
+		Content string `json:"content"`
+	}
+	if err := decodeData(e.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(data.Content, "<img") {
+		t.Fatalf("响应应是带图原文: %q", data.Content)
 	}
 }
