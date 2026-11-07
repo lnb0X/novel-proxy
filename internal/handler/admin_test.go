@@ -34,6 +34,11 @@ func newAdminEnv(t *testing.T) (*gin.Engine, *middleware.AuthManager, *config.Co
 	cfg.Admin.Username = "boss"
 	cfg.Admin.PasswordHash = hash
 
+	ipFilter, err := middleware.NewIPFilter(config.IPFilterConfig{Mode: "off", Scope: "all"}, testAdminPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	gin.SetMode(gin.TestMode)
 	auth := middleware.NewAuthManager(testAdminPath)
 	lg := slog.New(slog.NewJSONHandler(io.Discard, nil))
@@ -44,6 +49,8 @@ func newAdminEnv(t *testing.T) (*gin.Engine, *middleware.AuthManager, *config.Co
 	r.GET("/" + testAdminPath + "/api/auth/me", Me())
 	r.POST("/" + testAdminPath + "/api/auth/revoke", Revoke(auth))
 	r.POST("/"+testAdminPath+"/api/account/password", ChangePassword(auth, &cfg, instancePath))
+	r.GET("/"+testAdminPath+"/api/ip-filter", GetIPFilter(ipFilter))
+	r.PUT("/"+testAdminPath+"/api/ip-filter", PutIPFilter(ipFilter, &cfg, instancePath))
 	return r, auth, &cfg, instancePath
 }
 
@@ -266,4 +273,71 @@ func TestChangePassword(t *testing.T) {
 	if w3.Code != http.StatusOK {
 		t.Fatalf("新密码登录应成功: %d %s", w3.Code, w3.Body.String())
 	}
+}
+
+func TestPutIPFilterLockdown(t *testing.T) {
+	r, _, _, instancePath := newAdminEnv(t)
+	token := loginAndGetToken(t, r)
+
+	// httptest 默认来源是 192.0.2.1，名单不含它时 allow 模式拒绝保存。
+	w := putAdmin(r, "/"+testAdminPath+"/api/ip-filter",
+		`{"mode":"allow","scope":"all","rules":["10.0.0.0/8"]}`, token)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "拒绝保存") {
+		t.Fatalf("锁死检查应拒绝: %d %s", w.Code, w.Body.String())
+	}
+
+	// 名单包含当前 IP：保存成功，热更生效且写入 instance.yaml。
+	w = putAdmin(r, "/"+testAdminPath+"/api/ip-filter",
+		`{"mode":"allow","scope":"api","rules":["192.0.2.1"]}`, token)
+	if w.Code != http.StatusOK {
+		t.Fatalf("含当前 IP 应保存成功: %d %s", w.Code, w.Body.String())
+	}
+	w = getAdmin(r, "/"+testAdminPath+"/api/ip-filter", token)
+	if !strings.Contains(w.Body.String(), `"mode":"allow"`) || !strings.Contains(w.Body.String(), "192.0.2.1") {
+		t.Fatalf("GET 应读到新配置: %s", w.Body.String())
+	}
+	b, err := os.ReadFile(instancePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "ip_filter") || !strings.Contains(string(b), "192.0.2.1") {
+		t.Fatalf("instance.yaml 未写入: %s", b)
+	}
+
+	// 非法 mode。
+	w = putAdmin(r, "/"+testAdminPath+"/api/ip-filter",
+		`{"mode":"deny","scope":"all","rules":[]}`, token)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("非法 mode 应 40001: %d", w.Code)
+	}
+	// 非法 CIDR。
+	w = putAdmin(r, "/"+testAdminPath+"/api/ip-filter",
+		`{"mode":"block","scope":"all","rules":["abc"]}`, token)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("非法规则应 40001: %d", w.Code)
+	}
+}
+
+// putAdmin 发管理端 PUT 请求。
+func putAdmin(r *gin.Engine, path, body, tokenCookie string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, path, strings.NewReader(body))
+	req.Header.Set("X-Admin-Request", "1")
+	req.Header.Set("Content-Type", "application/json")
+	if tokenCookie != "" {
+		req.AddCookie(&http.Cookie{Name: "token", Value: tokenCookie})
+	}
+	r.ServeHTTP(w, req)
+	return w
+}
+
+// getAdmin 发管理端 GET 请求。
+func getAdmin(r *gin.Engine, path, tokenCookie string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	if tokenCookie != "" {
+		req.AddCookie(&http.Cookie{Name: "token", Value: tokenCookie})
+	}
+	r.ServeHTTP(w, req)
+	return w
 }

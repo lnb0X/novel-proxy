@@ -36,6 +36,11 @@ func (s *SwapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		(*h).ServeHTTP(w, r)
 		return
 	}
+	NotFound(w)
+}
+
+// NotFound 输出固定 HTML 404 页：零动态内容，no-store。
+func NotFound(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)

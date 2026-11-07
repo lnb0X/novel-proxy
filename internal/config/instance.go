@@ -56,8 +56,9 @@ func UpdateInstance(path string, set func(doc *yaml.Node) error) error {
 	return os.Rename(tmp, path)
 }
 
-// SetMappingKey 按 keyPath 增改嵌套标量键，中间层不存在时创建。
-func SetMappingKey(doc *yaml.Node, keyPath []string, value string) error {
+// SetMappingKey 按 keyPath 增改嵌套键，中间层不存在时创建。
+// value 为 string 时写标量，为 []string 时写序列。
+func SetMappingKey(doc *yaml.Node, keyPath []string, value any) error {
 	node := doc
 	for _, key := range keyPath[:len(keyPath)-1] {
 		child := mappingChild(node, key)
@@ -70,7 +71,10 @@ func SetMappingKey(doc *yaml.Node, keyPath []string, value string) error {
 		node = child
 	}
 	last := keyPath[len(keyPath)-1]
-	valNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
+	valNode, err := valueNode(value)
+	if err != nil {
+		return err
+	}
 	if existing := mappingValue(node, last); existing != nil {
 		*existing = *valNode
 		return nil
@@ -78,6 +82,21 @@ func SetMappingKey(doc *yaml.Node, keyPath []string, value string) error {
 	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: last}
 	node.Content = append(node.Content, keyNode, valNode)
 	return nil
+}
+
+func valueNode(value any) (*yaml.Node, error) {
+	switch v := value.(type) {
+	case string:
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
+	case []string:
+		seq := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+		for _, s := range v {
+			seq.Content = append(seq.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: s})
+		}
+		return seq, nil
+	default:
+		return nil, fmt.Errorf("不支持的键值类型 %T", value)
+	}
 }
 
 // mappingChild 返回映射里 key 对应的值节点，不存在返回 nil。

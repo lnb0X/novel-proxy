@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"net/netip"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -118,5 +119,86 @@ func ChangePassword(auth *middleware.AuthManager, cfg *config.Config, instancePa
 		auth.Rotate()
 		http.SetCookie(c.Writer, auth.ClearCookie(c.Request))
 		api.OKMsg(c, "密码已修改，请重新登录", nil)
+	}
+}
+
+// GetIPFilter GET /<secret>/api/ip-filter
+func GetIPFilter(f *middleware.IPFilter) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		mode, scope, rules := f.Snapshot()
+		out := make([]string, len(rules))
+		for i, p := range rules {
+			out[i] = p.String()
+		}
+		api.OK(c, gin.H{"mode": mode, "scope": scope, "rules": out})
+	}
+}
+
+// PutIPFilter PUT /<secret>/api/ip-filter：整体替换并热更。
+// allow 模式下当前 IP 不在新名单则拒绝保存（锁死检查）。
+func PutIPFilter(f *middleware.IPFilter, cfg *config.Config, instancePath string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var body struct {
+			Mode  string   `json:"mode"`
+			Scope string   `json:"scope"`
+			Rules []string `json:"rules"`
+		}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			api.Fail(c, api.CodeBadRequest, "请求体必须是 JSON")
+			return
+		}
+		switch body.Mode {
+		case "off", "allow", "block":
+		default:
+			api.Fail(c, api.CodeBadRequest, "mode 非法")
+			return
+		}
+		switch body.Scope {
+		case "all", "api", "admin":
+		default:
+			api.Fail(c, api.CodeBadRequest, "scope 非法")
+			return
+		}
+		rules, err := middleware.ParseIPRules(body.Rules)
+		if err != nil {
+			api.Fail(c, api.CodeBadRequest, err.Error())
+			return
+		}
+		if body.Mode == "allow" {
+			addr, aerr := netip.ParseAddr(middleware.ClientIP(c.Request))
+			locked := aerr != nil
+			if !locked {
+				locked = true
+				for _, p := range rules {
+					if p.Contains(addr) {
+						locked = false
+						break
+					}
+				}
+			}
+			if locked {
+				api.Fail(c, api.CodeBadRequest, "当前 IP 不在新名单内，拒绝保存")
+				return
+			}
+		}
+
+		f.Update(body.Mode, body.Scope, rules)
+		err = config.UpdateInstance(instancePath, func(doc *yaml.Node) error {
+			if err := config.SetMappingKey(doc, []string{"ip_filter", "mode"}, body.Mode); err != nil {
+				return err
+			}
+			if err := config.SetMappingKey(doc, []string{"ip_filter", "scope"}, body.Scope); err != nil {
+				return err
+			}
+			return config.SetMappingKey(doc, []string{"ip_filter", "rules"}, body.Rules)
+		})
+		if err != nil {
+			api.Fail(c, api.CodeInternal, err.Error())
+			return
+		}
+		cfg.IPFilter.Mode = body.Mode
+		cfg.IPFilter.Scope = body.Scope
+		cfg.IPFilter.Rules = body.Rules
+		api.OK(c, gin.H{"mode": body.Mode, "scope": body.Scope, "rules": body.Rules})
 	}
 }

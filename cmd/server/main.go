@@ -63,8 +63,15 @@ func main() {
 	engine := gin.New()
 	engine.Use(api.SlogMiddleware(lg, cfg.Server.AdminPath), api.RecoveryMiddleware(lg, cfg.App.Mode))
 
+	// 固定链：ipfilter 在 recover 之后、auth 之前。
+	ipFilter, err := middleware.NewIPFilter(cfg.IPFilter, cfg.Server.AdminPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "加载 IP 名单失败:", err)
+		os.Exit(1)
+	}
+	engine.Use(ipFilter.Middleware())
+
 	// 管理端认证：admin_path 为空（未初始化）时不挂载任何管理路由。
-	// 固定中间件链中 auth 位于 recover 之后，ipfilter/initguard 随后续任务插入。
 	if cfg.Server.AdminPath != "" {
 		authMgr := middleware.NewAuthManager(cfg.Server.AdminPath)
 		engine.Use(middleware.Auth(authMgr))
@@ -75,6 +82,8 @@ func main() {
 		admin.GET("/api/auth/me", handler.Me())
 		admin.POST("/api/auth/revoke", handler.Revoke(authMgr))
 		admin.POST("/api/account/password", handler.ChangePassword(authMgr, &cfg, instancePath))
+		admin.GET("/api/ip-filter", handler.GetIPFilter(ipFilter))
+		admin.PUT("/api/ip-filter", handler.PutIPFilter(ipFilter, &cfg, instancePath))
 	}
 
 	// 静态目录解析：-static > 指针文件 > default/ 兜底 > 固定 404 页。
