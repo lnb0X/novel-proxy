@@ -1,22 +1,24 @@
 package handler
 
 import (
-	"time"
-
 	"errors"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-resty/resty/v2"
 
 	"novel-proxy/internal/api"
+	"novel-proxy/internal/config"
+	"novel-proxy/internal/rules"
 	"novel-proxy/internal/store"
 	"novel-proxy/internal/upstream"
 )
 
 // Content GET /api/content?book_id=&chapter_id=
 // book_id 只做格式校验后透传回填，上游请求只用 chapter_id 构造。
-// store 非 nil 时走缓存：命中返回纯文字，未命中抓上游、剥图入库后返回带图原文。
-func Content(client *resty.Client, st store.ArticleStore) gin.HandlerFunc {
+// 执行流程（DECISIONS）：接管 → 缓存 → 上游 → 剥图入库 →
+// replace → prepend/append → 返回；拼接只在响应时进行。
+func Content(client *resty.Client, st store.ArticleStore, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		bookID, err := parseID("book_id", c.Query("book_id"))
 		if err != nil {
@@ -29,14 +31,30 @@ func Content(client *resty.Client, st store.ArticleStore) gin.HandlerFunc {
 			return
 		}
 
+		// 规则解析：override 非空即接管（Q4），不抓上游、不查缓存。
+		rs := rules.Resolve(cfg.ContentRules, bookID)
+		bookCfg, hasBook := cfg.ContentRules.Books[bookID]
+		bookOverridden := hasBook && bookCfg.Override != nil
+		if source, content, ok := rules.TakeOver(rs, bookOverridden); ok {
+			api.Logger(c).Info("content.overridden",
+				"book_id", bookID, "chapter_id", chapterID, "rule_source", source)
+			api.OK(c, upstream.Content{
+				BookID:    bookID,
+				ChapterID: chapterID,
+				Content:   content,
+			})
+			return
+		}
+
 		if st != nil {
 			art, err := st.Get(c.Request.Context(), bookID, chapterID)
 			if err == nil {
+				content, _ := rules.Assemble(art.Content, rs, "g")
 				api.OK(c, upstream.Content{
 					BookID:    bookID,
 					ChapterID: chapterID,
 					Title:     art.Title,
-					Content:   art.Content,
+					Content:   content,
 				})
 				return
 			}
@@ -82,6 +100,8 @@ func Content(client *resty.Client, st store.ArticleStore) gin.HandlerFunc {
 			}
 		}
 
+		content, _ := rules.Assemble(result.Content, rs, "g")
+		result.Content = content
 		result.BookID = bookID
 		result.ChapterID = chapterID
 		api.OK(c, result)

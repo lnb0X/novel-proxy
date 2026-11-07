@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 
 	"gopkg.in/yaml.v3"
@@ -87,6 +88,8 @@ func SetMappingKey(doc *yaml.Node, keyPath []string, value any) error {
 
 func valueNode(value any) (*yaml.Node, error) {
 	switch v := value.(type) {
+	case nil:
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!null", Value: "null"}, nil
 	case string:
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}, nil
 	case bool:
@@ -101,6 +104,32 @@ func valueNode(value any) (*yaml.Node, error) {
 		seq := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
 		for _, s := range v {
 			seq.Content = append(seq.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: s})
+		}
+		return seq, nil
+	case map[string]any:
+		m := &yaml.Node{Kind: yaml.MappingNode}
+		keys := make([]string, 0, len(v))
+		for k := range v {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			kn := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: k}
+			vn, err := valueNode(v[k])
+			if err != nil {
+				return nil, err
+			}
+			m.Content = append(m.Content, kn, vn)
+		}
+		return m, nil
+	case []any:
+		seq := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+		for _, item := range v {
+			n, err := valueNode(item)
+			if err != nil {
+				return nil, err
+			}
+			seq.Content = append(seq.Content, n)
 		}
 		return seq, nil
 	default:

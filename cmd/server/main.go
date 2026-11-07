@@ -159,6 +159,7 @@ func main() {
 		articleStore = counters
 	}
 	startedAt := time.Now()
+	client := upstream.NewClient(cfg.Upstream.TimeoutSeconds)
 
 	// 固定链尾段：auth（管理端）→ flags → ratelimit。
 	// 所有 Use 必须先于任何路由注册，gin 在注册时捕获链。
@@ -202,17 +203,19 @@ func main() {
 		admin.DELETE("/api/cache/:item_id", handler.RequireStats(statStore), handler.CacheDeleteItem(statStore, articleStore))
 		admin.DELETE("/api/cache", handler.RequireStats(statStore), handler.CacheDeleteByBook(statStore, articleStore))
 		admin.DELETE("/api/cache/all", handler.RequireStats(statStore), handler.CacheDeleteAll(statStore, articleStore))
+		admin.GET("/api/content-rules", handler.GetContentRules(&cfg))
+		admin.PUT("/api/content-rules", handler.PutContentRules(&cfg, instancePath, statStore))
+		admin.POST("/api/content-rules/preview", handler.ContentRulesPreview(&cfg, client, articleStore))
 	}
 
 	// 静态目录解析：-static > 指针文件 > default/ 兜底 > 固定 404 页。
 
 	engine.NoRoute(api.SplitNoRoute(cfg.Server.AdminPath, adminSwap, swap, initSwap))
 
-	client := upstream.NewClient(cfg.Upstream.TimeoutSeconds)
 	engine.GET("/api/search", handler.Search(client))
 	engine.GET("/api/detail", handler.Detail(client))
 	engine.GET("/api/catalog", handler.Catalog(client))
-	engine.GET("/api/content", handler.Content(client, articleStore))
+	engine.GET("/api/content", handler.Content(client, articleStore, &cfg))
 
 	srv := &http.Server{Addr: cfg.Server.Addr, Handler: engine}
 	go func() {

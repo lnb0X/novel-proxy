@@ -81,21 +81,21 @@ type IPFilterConfig struct {
 
 // ReplaceRule 内容替换规则，级联语义见 DECISIONS 内容规则节。
 type ReplaceRule struct {
-	Pattern     string `yaml:"pattern"`
-	Replacement string `yaml:"replacement"`
-	Regex       bool   `yaml:"regex"`
+	Pattern     string `yaml:"pattern" json:"pattern"`
+	Replacement string `yaml:"replacement" json:"replacement"`
+	Regex       bool   `yaml:"regex" json:"regex"`
 }
 
 type ContentRuleSet struct {
-	Prepend  *string       `yaml:"prepend"`
-	Append   *string       `yaml:"append"`
-	Replace  []ReplaceRule `yaml:"replace"`
-	Override *string       `yaml:"override"`
+	Prepend  *string       `yaml:"prepend" json:"prepend"`
+	Append   *string       `yaml:"append" json:"append"`
+	Replace  []ReplaceRule `yaml:"replace" json:"replace"`
+	Override *string       `yaml:"override" json:"override"`
 }
 
 type ContentRulesConfig struct {
-	Default ContentRuleSet            `yaml:"default"`
-	Books   map[string]ContentRuleSet `yaml:"books"`
+	Default ContentRuleSet            `yaml:"default" json:"default"`
+	Books   map[string]ContentRuleSet `yaml:"books" json:"books"`
 }
 
 type Config struct {

@@ -13,6 +13,7 @@ import (
 	"github.com/go-resty/resty/v2"
 
 	"novel-proxy/internal/api"
+	"novel-proxy/internal/config"
 	"novel-proxy/internal/store"
 )
 
@@ -47,7 +48,7 @@ func TestContentCacheRoundTrip(t *testing.T) {
 
 	rt := &countingRT{}
 	client := resty.New().SetTransport(rt)
-	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/content", Content(client, st)) })
+	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/content", Content(client, st, &config.Config{})) })
 	target := "/api/content?book_id=7526452300462705689&chapter_id=7526766660229808665"
 
 	code, e := doJSON(t, r, target)
@@ -103,7 +104,7 @@ func TestStoredContentHasNoImg(t *testing.T) {
 	}
 	rt := &countingRT{}
 	client := resty.New().SetTransport(rt)
-	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/content", Content(client, st)) })
+	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/content", Content(client, st, &config.Config{})) })
 
 	if _, e := doJSON(t, r, "/api/content?book_id=1&chapter_id=7526766660229808665"); e.Code != api.CodeOK {
 		t.Fatalf("请求失败: %s", e.Msg)
@@ -147,7 +148,7 @@ func TestPutFailureStillReturnsContent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(api.SlogMiddleware(lg, ""))
-	r.GET("/api/content", Content(client, &putFailStore{}))
+	r.GET("/api/content", Content(client, &putFailStore{}, &config.Config{}))
 
 	code, e := doJSON(t, r, "/api/content?book_id=1&chapter_id=7526766660229808665")
 	if code != http.StatusOK || e.Code != api.CodeOK {

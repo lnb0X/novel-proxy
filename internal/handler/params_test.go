@@ -11,6 +11,7 @@ import (
 	"github.com/go-resty/resty/v2"
 
 	"novel-proxy/internal/api"
+	"novel-proxy/internal/config"
 )
 
 func TestDetailRejectsEmptyBookID(t *testing.T) {
@@ -28,14 +29,14 @@ func TestCatalogRejectsEmptyBookID(t *testing.T) {
 }
 
 func TestContentRejectsEmptyChapterID(t *testing.T) {
-	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/content", Content(nil, nil)) })
+	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/content", Content(nil, nil, &config.Config{})) })
 	target := "/api/content?book_id=1"
 	code, e := doJSON(t, r, target)
 	wantBadRequest(t, target, code, e)
 }
 
 func TestContentRequiresBookID(t *testing.T) {
-	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/content", Content(nil, nil)) })
+	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/content", Content(nil, nil, &config.Config{})) })
 	for _, target := range []string{
 		"/api/content?chapter_id=1",
 		"/api/content?book_id=abc&chapter_id=1",
@@ -59,7 +60,7 @@ func TestContentEchoesBookID(t *testing.T) {
 		}, nil
 	})
 	client := resty.New().SetTransport(rt)
-	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/content", Content(client, nil)) })
+	r := newValidationEngine(func(e *gin.Engine) { e.GET("/api/content", Content(client, nil, &config.Config{})) })
 
 	target := "/api/content?book_id=7526452300462705689&chapter_id=7526766660229808665"
 	code, e := doJSON(t, r, target)
