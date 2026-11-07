@@ -142,16 +142,12 @@ func (s *putFailStore) SumSize(ctx context.Context) (int64, error)   { return 0,
 func TestPutFailureStillReturnsContent(t *testing.T) {
 	rt := &countingRT{}
 	client := resty.New().SetTransport(rt)
-	r := newValidationEngine(func(e *gin.Engine) {
-		e.GET("/api/content", Content(client, &putFailStore{}))
-	})
+	// api.Logger 依赖 SlogMiddleware 注入，须先 Use 再注册路由。
 	lg := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	// api.Logger 需要 SlogMiddleware 注入。
-	r.Use(func(c *gin.Context) {
-		c.Set("logger", lg.With("trace_id", "t"))
-		c.Set("trace_id", "t")
-		c.Next()
-	})
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(api.SlogMiddleware(lg, ""))
+	r.GET("/api/content", Content(client, &putFailStore{}))
 
 	code, e := doJSON(t, r, "/api/content?book_id=1&chapter_id=7526766660229808665")
 	if code != http.StatusOK || e.Code != api.CodeOK {
