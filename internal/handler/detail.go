@@ -24,7 +24,7 @@ func Detail(client *resty.Client) gin.HandlerFunc {
 		}
 		result, err := upstream.ParseDetail(raw)
 		if err != nil {
-			api.Fail(c, api.CodeUpstreamBizError, err.Error())
+			failUpstreamBody(c, err)
 			return
 		}
 		api.OK(c, result)

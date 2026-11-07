@@ -24,7 +24,7 @@ func Catalog(client *resty.Client) gin.HandlerFunc {
 		}
 		result, err := upstream.ParseCatalog(raw)
 		if err != nil {
-			api.Fail(c, api.CodeUpstreamBizError, err.Error())
+			failUpstreamBody(c, err)
 			return
 		}
 		result.BookID = bookID

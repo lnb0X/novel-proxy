@@ -39,7 +39,7 @@ func Content(client *resty.Client, st store.ArticleStore) gin.HandlerFunc {
 				return
 			}
 			if !errors.Is(err, store.ErrNotFound) {
-				api.Fail(c, api.CodeInternal, err.Error())
+				failInternal(c, err)
 				return
 			}
 		}
@@ -55,7 +55,7 @@ func Content(client *resty.Client, st store.ArticleStore) gin.HandlerFunc {
 		}
 		result, err := upstream.ParseContent(raw)
 		if err != nil {
-			api.Fail(c, api.CodeUpstreamBizError, err.Error())
+			failUpstreamBody(c, err)
 			return
 		}
 

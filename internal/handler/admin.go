@@ -102,7 +102,7 @@ func ChangePassword(auth *middleware.AuthManager, cfg *config.Config, instancePa
 		}
 		hash, err := middleware.HashPassword(body.NewPassword)
 		if err != nil {
-			api.Fail(c, api.CodeInternal, err.Error())
+			failInternal(c, err)
 			return
 		}
 		err = config.UpdateInstance(instancePath, func(doc *yaml.Node) error {
@@ -112,7 +112,7 @@ func ChangePassword(auth *middleware.AuthManager, cfg *config.Config, instancePa
 			return config.SetMappingKey(doc, []string{"admin", "password_hash"}, hash)
 		})
 		if err != nil {
-			api.Fail(c, api.CodeInternal, err.Error())
+			failInternal(c, err)
 			return
 		}
 		cfg.Admin.PasswordHash = hash
@@ -193,7 +193,7 @@ func PutIPFilter(f *middleware.IPFilter, cfg *config.Config, instancePath string
 			return config.SetMappingKey(doc, []string{"ip_filter", "rules"}, body.Rules)
 		})
 		if err != nil {
-			api.Fail(c, api.CodeInternal, err.Error())
+			failInternal(c, err)
 			return
 		}
 		cfg.IPFilter.Mode = body.Mode

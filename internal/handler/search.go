@@ -40,7 +40,7 @@ func Search(client *resty.Client) gin.HandlerFunc {
 		}
 		result, err := upstream.ParseSearch(raw)
 		if err != nil {
-			api.Fail(c, api.CodeUpstreamBizError, err.Error())
+			failUpstreamBody(c, err)
 			return
 		}
 		result.Page = page
