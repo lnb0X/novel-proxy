@@ -187,7 +187,7 @@
         四页双宽度截图自查
       完成后 git tag W13b-done
 
-- [ ] W10 三个数据库驱动
+- [x] W10 三个数据库驱动
       DSN 见 docs/QUESTIONS.md 的 Q5
       1. dialect.go 增加 postgresDialect 与 mysqlDialect
          - TEXT vs LONGTEXT、TIMESTAMPTZ vs DATETIME
