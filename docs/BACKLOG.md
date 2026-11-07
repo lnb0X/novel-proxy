@@ -71,7 +71,7 @@
         per_ip 模式下两个不同来源互不影响
       完成后 git tag W6-done
 
-- [ ] W7 IP 过滤
+- [x] W7 IP 过滤
       off / allow / block + scope + CIDR
       /init/* 豁免，API 403，管理端 404
       保存时锁死检查
