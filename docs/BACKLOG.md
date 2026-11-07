@@ -109,7 +109,7 @@
       没有可用实例的驱动，写 QUESTIONS.md 后跳过
       完成后 git tag W10-done
 
-- [ ] W11 前端版本管理
+- [x] W11 前端版本管理
       internal/frontend：版本目录、指针读写、上传解压、切换、回滚
       五个管理接口
       验收：
