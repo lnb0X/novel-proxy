@@ -77,3 +77,23 @@ initguard 门禁行为）规格明确，待上面两点澄清后与页面一并�
 证据：BACKLOG W10 验收条款；本机环境无三个数据库的可用连接。
 影响：W10（本次跳过）。待提供三个库的连接方式（DSN 与实例）后实现
       dialect.go 其余方言与 mongo.go，并跑通验收。
+
+## Q6 W13 十二个页面中八个的后端缺失或规格不全
+问题：W13 验收要求「CONTRACTS 第 7 节的每个操作都能在界面上完成」，
+      但对应后端大多尚未存在或规格不全：
+      1. /flags、/rate-limits 页面依赖 W6 接口（Q2 跳过）；
+      2. /stats、/audit 页面依赖 W8 接口（Q3 跳过）；
+      3. /rules 页面依赖 W9 接口（Q4 跳过）；
+      4. /cache 页面：CONTRACTS 定义了 GET/DELETE /cache*，但无任务实现
+         该端点；且 items 的 ttl_left_seconds 无从计算（articles 表与
+         配置里都没有 TTL 概念），hit_rate 依赖 Q3-3 的命中计数；
+      5. /config/upstream：upstream.max_concurrency 当前没有任何代码
+         消费（并发上限从未实现），PUT 后是无副作用的空操作；
+         timeout_seconds 热更是可行的。
+      现有后端可直接支撑的页面只有 /access、/frontends、/account、
+      /account/password 四个；/config/log 规格完整可实现（需 logx 支持
+      热更 level 与滚动参数）。
+证据：CONTRACTS 第 7 节；DECISIONS「配置 schema」（无 TTL 键）；
+      BACKLOG W13 验收条款；QUESTIONS Q2 / Q3 / Q4。
+影响：W13（本次跳过）。待 Q2 / Q3 / Q4 澄清并补齐 cache TTL 与
+      max_concurrency 语义后，一次性实现缺失端点与全部十二页。
