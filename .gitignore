@@ -3,6 +3,8 @@ logs/
 *.exe
 .env
 tmp/
+tmp_*.log
+*.tsbuildinfo
 data/
 web/dist/
 web/node_modules/
