@@ -17,16 +17,19 @@ func Detail(client *resty.Client) gin.HandlerFunc {
 			return
 		}
 
-		raw, err := upstream.FetchDetail(c.Request.Context(), client, bookID)
+		lg := api.Logger(c)
+		raw, err := upstream.FetchDetail(c.Request.Context(), client, lg, bookID)
 		if err != nil {
 			failUpstream(c, err)
 			return
 		}
 		result, err := upstream.ParseDetail(raw)
 		if err != nil {
+			lg.Debug("parse.result", "ok", false, "items_count", 0)
 			failUpstreamBody(c, err)
 			return
 		}
+		lg.Debug("parse.result", "ok", true, "items_count", 1)
 		api.OK(c, result)
 	}
 }

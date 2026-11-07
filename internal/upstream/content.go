@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -35,7 +36,8 @@ func acNonce() string {
 
 // FetchContent 请求上游正文页，wid 用当前毫秒时间戳，带桌面 Chrome UA、
 // Referer 和随机 __ac_nonce cookie。
-func FetchContent(ctx context.Context, client *resty.Client, chapterID string) ([]byte, error) {
+func FetchContent(ctx context.Context, client *resty.Client, lg *slog.Logger, chapterID string) ([]byte, error) {
+	start := time.Now()
 	resp, err := client.R().
 		SetContext(ctx).
 		SetQueryParam("wid", strconv.FormatInt(time.Now().UnixMilli(), 10)).
@@ -43,6 +45,7 @@ func FetchContent(ctx context.Context, client *resty.Client, chapterID string) (
 		SetHeader("Referer", "https://www.toutiao.com/").
 		SetHeader("Cookie", "__ac_nonce="+acNonce()).
 		Get(contentURLPrefix + chapterID + "/")
+	logResponse(lg, resp, start)
 	if err != nil {
 		return nil, err
 	}

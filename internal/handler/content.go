@@ -44,7 +44,8 @@ func Content(client *resty.Client, st store.ArticleStore) gin.HandlerFunc {
 			}
 		}
 
-		raw, err := upstream.FetchContent(c.Request.Context(), client, chapterID)
+		lg := api.Logger(c)
+		raw, err := upstream.FetchContent(c.Request.Context(), client, lg, chapterID)
 		if err != nil {
 			if errors.Is(err, upstream.ErrNoText) {
 				api.Fail(c, api.CodeNotFound, "该章节无文本内容")

@@ -33,16 +33,19 @@ func Search(client *resty.Client) gin.HandlerFunc {
 			page = p
 		}
 
-		raw, err := upstream.FetchSearch(c.Request.Context(), client, q, page)
+		lg := api.Logger(c)
+		raw, err := upstream.FetchSearch(c.Request.Context(), client, lg, q, page)
 		if err != nil {
 			failUpstream(c, err)
 			return
 		}
 		result, err := upstream.ParseSearch(raw)
 		if err != nil {
+			lg.Debug("parse.result", "ok", false, "items_count", 0)
 			failUpstreamBody(c, err)
 			return
 		}
+		lg.Debug("parse.result", "ok", true, "items_count", len(result.Items))
 		result.Page = page
 		api.OK(c, result)
 	}

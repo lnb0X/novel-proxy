@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -17,13 +19,15 @@ type detailRequest struct {
 }
 
 // FetchDetail 请求上游详情接口，POST JSON，只发请求。
-func FetchDetail(ctx context.Context, client *resty.Client, bookID string) ([]byte, error) {
+func FetchDetail(ctx context.Context, client *resty.Client, lg *slog.Logger, bookID string) ([]byte, error) {
+	start := time.Now()
 	resp, err := client.R().
 		SetContext(ctx).
 		SetQueryParam("aid", "3040").
 		SetHeader("Content-Type", "application/json").
 		SetBody(detailRequest{BookID: bookID}).
 		Post(detailURL)
+	logResponse(lg, resp, start)
 	if err != nil {
 		return nil, err
 	}

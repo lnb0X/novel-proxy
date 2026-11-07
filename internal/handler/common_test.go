@@ -2,6 +2,8 @@ package handler
 
 import (
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -22,6 +24,9 @@ type envelope struct {
 func newValidationEngine(register func(*gin.Engine)) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
+	// 与生产一致：请求级 logger 先注入（Content 等无条件取用）。
+	lg := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	r.Use(api.SlogMiddleware(lg, ""))
 	register(r)
 	return r
 }

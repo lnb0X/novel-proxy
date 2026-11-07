@@ -11,6 +11,7 @@ import (
 
 // NewClient 构建全局复用的 resty client，超时来自配置 upstream.timeout_seconds。
 func NewClient(timeoutSeconds int) *resty.Client {
+	clientTimeoutMs.Store(int64(timeoutSeconds) * 1000)
 	return resty.New().SetTimeout(time.Duration(timeoutSeconds) * time.Second)
 }
 

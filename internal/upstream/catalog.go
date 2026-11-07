@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -12,11 +14,13 @@ import (
 const catalogURL = "https://fanqienovel.com/api/reader/directory/detail"
 
 // FetchCatalog 请求上游目录接口，GET，参数驼峰 bookId。
-func FetchCatalog(ctx context.Context, client *resty.Client, bookID string) ([]byte, error) {
+func FetchCatalog(ctx context.Context, client *resty.Client, lg *slog.Logger, bookID string) ([]byte, error) {
+	start := time.Now()
 	resp, err := client.R().
 		SetContext(ctx).
 		SetQueryParam("bookId", bookID).
 		Get(catalogURL)
+	logResponse(lg, resp, start)
 	if err != nil {
 		return nil, err
 	}

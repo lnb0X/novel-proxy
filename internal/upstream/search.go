@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -14,7 +16,8 @@ const searchURL = "https://novel.snssdk.com/api/novel/channel/homepage/search/se
 
 // FetchSearch 请求上游搜索接口，只发请求。
 // 上游参数风格：q / offset，offset = (page-1)*10。
-func FetchSearch(ctx context.Context, client *resty.Client, q string, page int) ([]byte, error) {
+func FetchSearch(ctx context.Context, client *resty.Client, lg *slog.Logger, q string, page int) ([]byte, error) {
+	start := time.Now()
 	resp, err := client.R().
 		SetContext(ctx).
 		SetQueryParam("device_platform", "android").
@@ -22,6 +25,7 @@ func FetchSearch(ctx context.Context, client *resty.Client, q string, page int) 
 		SetQueryParam("offset", strconv.Itoa((page-1)*10)).
 		SetQueryParam("q", q).
 		Get(searchURL)
+	logResponse(lg, resp, start)
 	if err != nil {
 		return nil, err
 	}
