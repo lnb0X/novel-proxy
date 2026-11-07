@@ -64,5 +64,10 @@
       handler 参数校验分支单测（nil client 证明校验先于发请求）、
       docs/NOTES.md 记录 content 双 title 细节、tag v0.1.0
 
+- [x] T8 v0.1.1 契约变更
+      content 新增必填 book_id（校验后透传回填，上游仍只用 chapter_id），
+      detail / catalog 的 book_id 升级为 ^\d{1,20}$ 白名单，
+      parseID 统一映射 40001，破坏性变更无兼容期，tag v0.1.1
+
 ## v0.2
 静态文件服务、阅读端前端、管理端、缓存
