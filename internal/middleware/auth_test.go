@@ -178,16 +178,23 @@ func TestAuthMiddlewareNonGetHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(Auth(m))
-	r.POST("/x7k2p9/api/other", func(c *gin.Context) { c.Status(200) })
-	r.POST("/x7k2p9/api/auth/login", func(c *gin.Context) { c.Status(200) })
+	ran := false
+	mark := func(c *gin.Context) { ran = true; c.Status(200) }
+	r.POST("/x7k2p9/api/other", mark)
+	r.POST("/x7k2p9/api/auth/login", mark)
 
-	// 非 GET 且无 X-Admin-Request：40101。
+	// 非 GET 且无 X-Admin-Request：40101，且下游 handler 不得执行。
+	ran = false
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/x7k2p9/api/other", nil))
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("缺 X-Admin-Request 应 401: %d", w.Code)
 	}
+	if ran {
+		t.Fatal("被拒绝后下游 handler 不应执行")
+	}
 	// 带 header 放行（此路径仍需 token，会被拒）。
+	ran = false
 	w2 := httptest.NewRecorder()
 	req2 := httptest.NewRequest(http.MethodPost, "/x7k2p9/api/other", nil)
 	req2.Header.Set("X-Admin-Request", "1")
@@ -195,18 +202,25 @@ func TestAuthMiddlewareNonGetHeader(t *testing.T) {
 	if w2.Code != http.StatusUnauthorized {
 		t.Fatalf("带 header 缺 token 仍应 401: %d", w2.Code)
 	}
+	if ran {
+		t.Fatal("token 无效时下游 handler 不应执行")
+	}
 	// login 免 token 但 header 必须有。
+	ran = false
 	w3 := httptest.NewRecorder()
 	r.ServeHTTP(w3, httptest.NewRequest(http.MethodPost, "/x7k2p9/api/auth/login", nil))
 	if w3.Code != http.StatusUnauthorized {
 		t.Fatalf("login 缺 X-Admin-Request 应 401: %d", w3.Code)
 	}
+	if ran {
+		t.Fatal("login 被拒后 handler 不应执行")
+	}
 	w4 := httptest.NewRecorder()
 	req4 := httptest.NewRequest(http.MethodPost, "/x7k2p9/api/auth/login", nil)
 	req4.Header.Set("X-Admin-Request", "1")
 	r.ServeHTTP(w4, req4)
-	if w4.Code != http.StatusOK {
-		t.Fatalf("login 带 header 应放行: %d", w4.Code)
+	if w4.Code != http.StatusOK || !ran {
+		t.Fatalf("login 带 header 应放行: %d ran=%v", w4.Code, ran)
 	}
 	// 非 admin 路径不受影响。
 	gin2 := gin.New()

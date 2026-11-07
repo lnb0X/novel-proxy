@@ -152,6 +152,10 @@ func TestMeWithoutToken(t *testing.T) {
 	if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "40101") {
 		t.Fatalf("未登录 me 应 401: %d %s", w.Code, w.Body.String())
 	}
+	// 拒绝后 me handler 不得执行：响应里不应出现认证数据。
+	if strings.Contains(w.Body.String(), "perm") {
+		t.Fatalf("拒绝后不应有第二个响应体: %s", w.Body.String())
+	}
 }
 
 func TestMeWithToken(t *testing.T) {

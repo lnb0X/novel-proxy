@@ -55,6 +55,9 @@ func write(c *gin.Context, code int, msg string, data any) {
 		TraceID: c.GetString(keyTraceID),
 		Data:    data,
 	})
+	// 中间件里拒绝后必须中断链路，否则下游 handler 照样执行；
+	// 在 handler 层调用时 Abort 是无感的（后面没有更多 handler）。
+	c.Abort()
 }
 
 func httpStatus(code int) int {
