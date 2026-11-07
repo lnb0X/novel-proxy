@@ -184,6 +184,10 @@ func (m *AuthManager) LoginAllowed(ip, username string) (time.Duration, bool) {
 }
 
 // LoginFailure 记一次失败：IP 满 5 次或账号满 10 次锁 15 分钟。
+// 表上限 10000 是故意设的：用户名攻击者可控，发不同用户名即可无限
+// 增长且永不回收，超过上限后放弃新增计数（已锁定的照常生效）。
+const failMapMax = 10000
+
 func (m *AuthManager) LoginFailure(ip, username string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -191,6 +195,11 @@ func (m *AuthManager) LoginFailure(ip, username string) {
 	if m.ipFails[ip] >= ipFailsMax {
 		m.ipLocks[ip] = time.Now().Add(lockDuration)
 		delete(m.ipFails, ip)
+	}
+	if len(m.userFails) >= failMapMax {
+		if _, exists := m.userFails[username]; !exists {
+			return
+		}
 	}
 	m.userFails[username]++
 	if m.userFails[username] >= userFailsMax {

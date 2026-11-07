@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -168,7 +169,7 @@ func TestRenewalWindowInMiddleware(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cl.ExpiresAt.Time.After(time.Now().Add(8*time.Minute)) {
+	if cl.ExpiresAt.Time.After(time.Now().Add(8 * time.Minute)) {
 		t.Fatalf("续签越过 sat: %v", cl.ExpiresAt.Time)
 	}
 }
@@ -303,3 +304,25 @@ func TestValidatePassword(t *testing.T) {
 		}
 	}
 }
+
+func TestLoginFailureMapCapped(t *testing.T) {
+	m := NewAuthManager("x7k2p9")
+	for i := 0; i < failMapMax+10; i++ {
+		m.LoginFailure("9.9.9.9", "attacker-"+itoa(i))
+	}
+	m.mu.Lock()
+	n := len(m.userFails)
+	m.mu.Unlock()
+	if n > failMapMax {
+		t.Fatalf("失败表应封顶 %d, got %d", failMapMax, n)
+	}
+	// 已在表内的用户名继续累计可达锁定。
+	for i := 0; i < userFailsMax; i++ {
+		m.LoginFailure("9.9.9.9", "attacker-0")
+	}
+	if _, ok := m.LoginAllowed("1.2.3.4", "attacker-0"); ok {
+		t.Fatal("表内账号达到阈值仍应锁定")
+	}
+}
+
+func itoa(i int) string { return strconv.Itoa(i) }
