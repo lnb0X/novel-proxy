@@ -2,7 +2,7 @@
 
 ## v0.2 管理端与基础设施
 
-- [ ] W1 配置分层
+- [x] W1 配置分层
       config.yaml 基础结构 + data/instance.yaml 覆盖 + env 覆盖
       KnownFields 严格模式，enum 非法值报错退出
       确认 .gitignore 含 data/
