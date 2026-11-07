@@ -90,11 +90,14 @@ func (m *AuthManager) Issue(username string) (string, time.Time, time.Time) {
 
 // Renew 续签：exp 不得越过 sat。
 func (m *AuthManager) Renew(username string, sat time.Time) (string, time.Time) {
+	// now 只取一次：封顶时 exp 必须精确等于 sat，
+	// 两次取时会让 exp 比 sat 多出几十微秒（-race 下必现）。
+	now := time.Now()
 	ttl := jwtTTL
-	if sat.Before(time.Now().Add(jwtTTL)) {
-		ttl = time.Until(sat)
+	if sat.Before(now.Add(jwtTTL)) {
+		ttl = sat.Sub(now)
 	}
-	return m.sign(username, sat, ttl), time.Now().Add(ttl)
+	return m.sign(username, sat, ttl), now.Add(ttl)
 }
 
 func (m *AuthManager) sign(username string, sat time.Time, ttl time.Duration) string {
