@@ -14,7 +14,7 @@
         git status 里看不到 data/ 下的任何文件
       完成后 git tag W1-done
 
-- [ ] W2 ArticleStore + SQLite + content 接缓存
+- [x] W2 ArticleStore + SQLite + content 接缓存
       store 接口 + SQL 实现（先只接 sqlite）+ articles 表
       content：查库 → 未命中抓上游 → 剥 img → 入库 → 返回
       验收：
