@@ -306,7 +306,7 @@ func TestSplitNoRoute(t *testing.T) {
 	// 静态未命中是空 body 404，gin 不允许在 NoRoute 链后补默认文本。
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.NoRoute(SplitNoRoute(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	r.NoRoute(SplitNoRoute("", nil, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()

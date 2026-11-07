@@ -147,7 +147,7 @@ func TestActivateAutoRollback(t *testing.T) {
 
 	m := New(base)
 	swap := &SwapHandler{}
-	m.Mount("reader", swap)
+	m.Mount("reader", swap, "/")
 	m.Reload("reader")
 	body := func() string {
 		w := httptest.NewRecorder()
@@ -203,7 +203,7 @@ func TestRollbackToggles(t *testing.T) {
 		t.Fatal(err)
 	}
 	swap := &SwapHandler{}
-	m.Mount("reader", swap)
+	m.Mount("reader", swap, "/")
 	m.Reload("reader")
 
 	// 预置回滚点：从 v1 回到 default。

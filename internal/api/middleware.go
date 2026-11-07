@@ -135,14 +135,22 @@ func NoRoute(c *gin.Context) {
 	Fail(c, CodeNotFound, "路由不存在")
 }
 
-// SplitNoRoute 未匹配路由分流：/api/* 返回 JSON 404，
-// 其余路径交给静态 handler（未配置静态目录时是固定 HTML 404 页）。
-func SplitNoRoute(static http.Handler) gin.HandlerFunc {
+// SplitNoRoute 未匹配路由分流：/api/*（含管理端 /<secret>/api/*）返回
+// JSON 404；管理端其余路径交给 admin 静态 handler；再其余交给 reader。
+func SplitNoRoute(adminPath string, admin, reader http.Handler) gin.HandlerFunc {
+	adminPrefix := "/" + adminPath
 	return func(c *gin.Context) {
-		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+		p := c.Request.URL.Path
+		isAPI := strings.HasPrefix(p, "/api/") ||
+			(adminPath != "" && strings.HasPrefix(p, adminPrefix+"/api/"))
+		if isAPI {
 			NoRoute(c)
 			return
 		}
-		static.ServeHTTP(c.Writer, c.Request)
+		if adminPath != "" && (p == adminPrefix || strings.HasPrefix(p, adminPrefix+"/")) {
+			admin.ServeHTTP(c.Writer, c.Request)
+			return
+		}
+		reader.ServeHTTP(c.Writer, c.Request)
 	}
 }

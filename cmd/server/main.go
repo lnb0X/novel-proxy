@@ -76,14 +76,21 @@ func main() {
 	mgr := frontend.New("./data/frontends")
 	mgr.SetLogger(lg)
 	swap := &frontend.SwapHandler{}
+	adminSwap := &frontend.SwapHandler{}
 	frontendDir := ""
 	if *staticDir != "" {
 		frontendDir = *staticDir
-		swap.Set(frontend.FileServer(frontendDir))
+		swap.Set(frontend.FileServer(frontendDir, "/"))
 	} else {
-		mgr.Mount("reader", swap)
+		mgr.Mount("reader", swap, "/")
 		mgr.Reload("reader")
 		frontendDir, _ = mgr.Resolve("reader")
+	}
+	if cfg.Server.AdminPath != "" {
+		// 管理端 SPA 挂在 /<secret>/ 下，页面路径免 token，
+		// 版本上传激活后由 manager 直接换 handler。
+		mgr.Mount("admin", adminSwap, "/"+cfg.Server.AdminPath)
+		mgr.Reload("admin")
 	}
 
 	// 管理端认证：admin_path 为空（未初始化）时不挂载任何管理路由。
@@ -109,7 +116,7 @@ func main() {
 
 	// 静态目录解析：-static > 指针文件 > default/ 兜底 > 固定 404 页。
 
-	engine.NoRoute(api.SplitNoRoute(swap))
+	engine.NoRoute(api.SplitNoRoute(cfg.Server.AdminPath, adminSwap, swap))
 
 	// 数据库只在 storage.enabled 时连接；未启用时 content 直接旁路缓存。
 	var articleStore store.ArticleStore

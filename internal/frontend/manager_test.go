@@ -127,7 +127,7 @@ func TestSwapHandlerSwitch(t *testing.T) {
 	writeFile(t, filepath.Join(dirB, "index.html"), "<p>B</p>")
 
 	s := &SwapHandler{}
-	s.Set(FileServer(dirA))
+	s.Set(FileServer(dirA, "/"))
 	get := func() string {
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -137,7 +137,7 @@ func TestSwapHandlerSwitch(t *testing.T) {
 		t.Fatal("应伺服 A")
 	}
 	// 模拟重新加载：重新 Set 新目录后立即生效。
-	s.Set(FileServer(dirB))
+	s.Set(FileServer(dirB, "/"))
 	if !strings.Contains(get(), "B") {
 		t.Fatal("切换后应伺服 B")
 	}
@@ -151,7 +151,7 @@ func TestFileServer(t *testing.T) {
 
 	get := func(path string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
-		FileServer(dir).ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		FileServer(dir, "/").ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
 		return w
 	}
 

@@ -56,18 +56,20 @@ func NotFound(w http.ResponseWriter) {
 type Manager struct {
 	base string
 
-	mu      sync.Mutex
-	swaps   map[string]*SwapHandler
-	pending map[string]*pendingSwitch
-	lg      *slog.Logger
+	mu       sync.Mutex
+	swaps    map[string]*SwapHandler
+	prefixes map[string]string
+	pending  map[string]*pendingSwitch
+	lg       *slog.Logger
 }
 
 // New 构建 manager，base 是版本根目录（如 ./data/frontends）。
 func New(base string) *Manager {
 	return &Manager{
-		base:    base,
-		swaps:   map[string]*SwapHandler{},
-		pending: map[string]*pendingSwitch{},
+		base:     base,
+		swaps:    map[string]*SwapHandler{},
+		prefixes: map[string]string{},
+		pending:  map[string]*pendingSwitch{},
 	}
 }
 
@@ -76,23 +78,26 @@ func (m *Manager) SetLogger(lg *slog.Logger) {
 	m.lg = lg
 }
 
-// Mount 登记某 app 的可换 handler，Reload 时自动替换。
-func (m *Manager) Mount(app string, swap *SwapHandler) {
+// Mount 登记某 app 的可换 handler 与它的 URL 前缀（reader 为 "/"，
+// admin 为 "/<secret>"），Reload 时按前缀解析路径。
+func (m *Manager) Mount(app string, swap *SwapHandler, urlPrefix string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.swaps[app] = swap
+	m.prefixes[app] = urlPrefix
 }
 
 // Reload 重新解析 app 目录并替换内存中的 handler；解析失败回到固定 404 页。
 func (m *Manager) Reload(app string) {
 	m.mu.Lock()
 	swap := m.swaps[app]
+	prefix := m.prefixes[app]
 	m.mu.Unlock()
 	if swap == nil {
 		return
 	}
 	if dir, ok := m.Resolve(app); ok {
-		swap.Set(FileServer(dir))
+		swap.Set(FileServer(dir, prefix))
 		return
 	}
 	swap.Set(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { NotFound(w) }))
@@ -355,13 +360,20 @@ func (m *Manager) WritePointer(app, version string) error {
 	return os.Rename(tmp, final)
 }
 
-// FileServer 返回目录静态服务：找不到或命中目录一律空 body 404，
-// 不开目录列表。URL 路径用 path.Clean（正斜杠语义，Windows 下也正确），
-// 清洗后 Join 进 dir，不逃出目录。用 ServeContent 伺服，
-// 避免 ServeFile 对 URL 路径的规范化重定向。
-func FileServer(dir string) http.Handler {
+// FileServer 返回目录静态服务：先剥掉挂载前缀（urlPrefix，"/" 表示根），
+// 找不到或命中目录一律空 body 404，不开目录列表。URL 路径用 path.Clean
+// （正斜杠语义，Windows 下也正确），清洗后 Join 进 dir，不逃出目录。
+// 用 ServeContent 伺服，避免 ServeFile 对 URL 路径的规范化重定向。
+func FileServer(dir, urlPrefix string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rel := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		p := path.Clean("/" + r.URL.Path)
+		if urlPrefix != "" && urlPrefix != "/" {
+			p = strings.TrimPrefix(p, urlPrefix)
+			if p == "." {
+				p = "/"
+			}
+		}
+		rel := strings.TrimPrefix(p, "/")
 		if rel == "" || rel == "." {
 			rel = "index.html"
 		}

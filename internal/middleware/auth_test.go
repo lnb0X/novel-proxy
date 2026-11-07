@@ -231,6 +231,15 @@ func TestAuthMiddlewareNonGetHeader(t *testing.T) {
 	if w5.Code != http.StatusOK {
 		t.Fatalf("非 admin 路径不应拦截: %d", w5.Code)
 	}
+	// 管理端页面路径（非 /api/*）免 token：未登录也能加载 SPA。
+	gin3 := gin.New()
+	gin3.Use(Auth(m))
+	gin3.GET("/x7k2p9/", func(c *gin.Context) { c.String(200, "spa") })
+	w6 := httptest.NewRecorder()
+	gin3.ServeHTTP(w6, httptest.NewRequest(http.MethodGet, "/x7k2p9/", nil))
+	if w6.Code != http.StatusOK {
+		t.Fatalf("管理端页面不应拦 token: %d", w6.Code)
+	}
 }
 
 func TestLoginLockout(t *testing.T) {

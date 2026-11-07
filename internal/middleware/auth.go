@@ -222,11 +222,17 @@ func Auth(m *AuthManager) gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		rel := strings.TrimPrefix(p, adminPrefix)
+		// 管理端页面路径（非 /api/*）不设防：页面要能加载，
+		// 未登录跳转由前端根据 /api/auth/me 的 401 完成。
+		if !strings.HasPrefix(rel, "/api/") {
+			c.Next()
+			return
+		}
 		if c.Request.Method != http.MethodGet && c.Request.Header.Get(adminHeader) != adminHeaderV {
 			api.Fail(c, api.CodeUnauthorized, "缺少 "+adminHeader+" 请求头")
 			return
 		}
-		rel := strings.TrimPrefix(p, adminPrefix)
 		if !exempt[rel] {
 			token, err := c.Cookie(cookieName)
 			if err != nil {
