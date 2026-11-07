@@ -71,6 +71,21 @@ func main() {
 	}
 	engine.Use(ipFilter.Middleware())
 
+	// 前端版本管理：目录由 manager 提供，版本切换时替换 swap 里的 handler。
+	// 静态目录解析顺序：-static > 指针文件 > default/ 兜底 > 固定 404 页。
+	mgr := frontend.New("./data/frontends")
+	mgr.SetLogger(lg)
+	swap := &frontend.SwapHandler{}
+	frontendDir := ""
+	if *staticDir != "" {
+		frontendDir = *staticDir
+		swap.Set(frontend.FileServer(frontendDir))
+	} else {
+		mgr.Mount("reader", swap)
+		mgr.Reload("reader")
+		frontendDir, _ = mgr.Resolve("reader")
+	}
+
 	// 管理端认证：admin_path 为空（未初始化）时不挂载任何管理路由。
 	if cfg.Server.AdminPath != "" {
 		authMgr := middleware.NewAuthManager(cfg.Server.AdminPath)
@@ -84,21 +99,15 @@ func main() {
 		admin.POST("/api/account/password", handler.ChangePassword(authMgr, &cfg, instancePath))
 		admin.GET("/api/ip-filter", handler.GetIPFilter(ipFilter))
 		admin.PUT("/api/ip-filter", handler.PutIPFilter(ipFilter, &cfg, instancePath))
+		admin.GET("/api/frontends", handler.ListFrontends(mgr))
+		admin.POST("/api/frontends/:app/upload", handler.UploadFrontend(mgr))
+		admin.POST("/api/frontends/:app/activate", handler.ActivateFrontend(mgr))
+		admin.POST("/api/frontends/:app/confirm", handler.ConfirmFrontend(mgr))
+		admin.POST("/api/frontends/:app/rollback", handler.RollbackFrontend(mgr))
+		admin.DELETE("/api/frontends/:app/:version", handler.DeleteFrontend(mgr))
 	}
 
 	// 静态目录解析：-static > 指针文件 > default/ 兜底 > 固定 404 页。
-	// 目录由 manager 提供，运行期换目录只重设 swap 里的 handler。
-	mgr := frontend.New("./data/frontends")
-	swap := &frontend.SwapHandler{}
-	frontendDir := ""
-	if *staticDir != "" {
-		frontendDir = *staticDir
-	} else if dir, ok := mgr.Resolve("reader"); ok {
-		frontendDir = dir
-	}
-	if frontendDir != "" {
-		swap.Set(frontend.FileServer(frontendDir))
-	}
 
 	engine.NoRoute(api.SplitNoRoute(swap))
 
