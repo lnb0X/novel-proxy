@@ -60,5 +60,9 @@
       验收：四个样本全部符合预期，详见 docs/SAMPLES.md
       完成后 git tag T6-done
 
+- [x] T7 v0.1 收尾
+      handler 参数校验分支单测（nil client 证明校验先于发请求）、
+      docs/NOTES.md 记录 content 双 title 细节、tag v0.1.0
+
 ## v0.2
 静态文件服务、阅读端前端、管理端、缓存
