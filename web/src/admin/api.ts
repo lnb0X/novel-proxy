@@ -110,3 +110,83 @@ export function getIpFilter(): Promise<IpFilter> {
 export function getFrontends(): Promise<{ reader: AppFrontends; admin: AppFrontends }> {
   return apiFetch("/frontends");
 }
+
+export function setFlag(name: string, enabled: boolean): Promise<void> {
+  return apiFetch("/flags/" + name, {
+    method: "PUT",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export interface RateLimitRule {
+  mode: string;
+  per_minute: number;
+  burst: number;
+}
+
+export type RateLimits = {
+  search: RateLimitRule;
+  detail: RateLimitRule;
+  catalog: RateLimitRule;
+  content: RateLimitRule;
+};
+
+export function getRateLimits(): Promise<RateLimits> {
+  return apiFetch<RateLimits>("/rate-limits");
+}
+
+export function putRateLimits(rl: RateLimits): Promise<RateLimits> {
+  return apiFetch<RateLimits>("/rate-limits", {
+    method: "PUT",
+    body: JSON.stringify(rl),
+  });
+}
+
+export function putIpFilter(f: IpFilter): Promise<IpFilter> {
+  return apiFetch<IpFilter>("/ip-filter", {
+    method: "PUT",
+    body: JSON.stringify(f),
+  });
+}
+
+export interface LogConfig {
+  level: string;
+  max_size_mb: number;
+  max_backups: number;
+  max_age_days: number;
+  compress: boolean;
+}
+
+export function getLogConfig(): Promise<LogConfig> {
+  return apiFetch<LogConfig>("/config/log");
+}
+
+export function putLogConfig(c: LogConfig): Promise<LogConfig> {
+  return apiFetch<LogConfig>("/config/log", {
+    method: "PUT",
+    body: JSON.stringify(c),
+  });
+}
+
+export interface UpstreamConfig {
+  timeout_seconds: number;
+  max_concurrency: number;
+}
+
+export function getUpstreamConfig(): Promise<UpstreamConfig> {
+  return apiFetch<UpstreamConfig>("/config/upstream");
+}
+
+export function putUpstreamConfig(c: UpstreamConfig): Promise<UpstreamConfig> {
+  return apiFetch<UpstreamConfig>("/config/upstream", {
+    method: "PUT",
+    body: JSON.stringify(c),
+  });
+}
+
+export function changePassword(oldPassword: string, newPassword: string): Promise<void> {
+  return apiFetch("/account/password", {
+    method: "POST",
+    body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+  });
+}

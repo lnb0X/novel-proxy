@@ -157,7 +157,7 @@
         审计能查到 config_change
       完成后 git tag W14-done
 
-- [ ] W13a 管理端七个轻页面
+- [x] W13a 管理端七个轻页面
       /flags          四个开关，切换带二次确认
       /rate-limits    四行 × (模式 / 每分钟 / 突发)
       /access         模式 + 范围 + 名单增删，含锁死提示

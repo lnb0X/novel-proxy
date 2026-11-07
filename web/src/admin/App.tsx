@@ -6,8 +6,15 @@ import type { Me } from "./api";
 import { me } from "./api";
 import { AdminLayout } from "./Layout";
 import { LoginPage } from "./pages/Login";
-import { OverviewPage } from "./pages/Overview";
 import { PlaceholderPage } from "./pages/Placeholder";
+import { OverviewPage } from "./pages/Overview";
+import { AccessPage, FlagsPage, RateLimitsPage } from "./pages/access";
+import {
+  AccountPage,
+  AccountPasswordPage,
+  ConfigLogPage,
+  ConfigUpstreamPage,
+} from "./pages/account-config";
 
 // 视觉约束见 AGENTS.md：主色不用 indigo/violet，圆角统一 6px。
 const theme = {
@@ -58,6 +65,13 @@ export function AdminApp() {
             }
           >
             <Route index element={<OverviewPage />} />
+            <Route path="flags" element={<FlagsPage />} />
+            <Route path="rate-limits" element={<RateLimitsPage />} />
+            <Route path="access" element={<AccessPage />} />
+            <Route path="account" element={meInfo ? <AccountPage me={meInfo} /> : null} />
+            <Route path="account/password" element={<AccountPasswordPage />} />
+            <Route path="config/log" element={<ConfigLogPage />} />
+            <Route path="config/upstream" element={<ConfigUpstreamPage />} />
             <Route path="*" element={<PlaceholderPage />} />
           </Route>
         </Routes>
