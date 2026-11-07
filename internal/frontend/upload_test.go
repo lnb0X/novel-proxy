@@ -248,3 +248,14 @@ func TestDeleteVersion(t *testing.T) {
 		t.Fatal("删除后目录应消失")
 	}
 }
+
+func TestValidateVersion(t *testing.T) {
+	for _, bad := range []string{"", ".", "..", "a/b", "a\b", "/abs", "C:\x"} {
+		if err := validateVersion(bad); err == nil {
+			t.Errorf("%q 应拒绝", bad)
+		}
+	}
+	if err := validateVersion("20261107-af36"); err != nil {
+		t.Errorf("合法版本名不应拒绝: %v", err)
+	}
+}

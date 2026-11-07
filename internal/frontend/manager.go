@@ -154,9 +154,8 @@ func (m *Manager) CurrentBasis(app string) string {
 // DeleteVersion 删除版本目录；若是待确认版本则一并取消。
 func (m *Manager) DeleteVersion(app, version string) error {
 	// version 来自 URL 参数，先挡掉路径穿越。
-	if version == "." || version == ".." ||
-		strings.ContainsAny(version, "/\\") || filepath.IsAbs(version) {
-		return fmt.Errorf("非法版本名 %q", version)
+	if err := validateVersion(version); err != nil {
+		return err
 	}
 	m.mu.Lock()
 	if p := m.pending[app]; p != nil && p.version == version {
@@ -231,9 +230,22 @@ type pendingSwitch struct {
 	timer   *time.Timer
 }
 
+// validateVersion 版本名只允许单个路径段：挡住 "."、".."、分隔符与
+// 绝对路径，Activate 与 DeleteVersion 共用。
+func validateVersion(version string) error {
+	if version == "" || version == "." || version == ".." ||
+		strings.ContainsAny(version, "/\\") || filepath.IsAbs(version) {
+		return fmt.Errorf("非法版本名 %q", version)
+	}
+	return nil
+}
+
 // Activate 把版本切为当前：记录回滚点、重写指针、替换内存 handler，
 // within 内未 Confirm 则自动回滚。
 func (m *Manager) Activate(app, version string, within time.Duration) (previous string, err error) {
+	if err := validateVersion(version); err != nil {
+		return "", err
+	}
 	if !isDir(filepath.Join(m.base, app, version)) {
 		return "", fmt.Errorf("版本 %s 不存在", version)
 	}
