@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 
 	"novel-proxy/internal/api"
 	"novel-proxy/internal/config"
+	"novel-proxy/internal/frontend"
 	"novel-proxy/internal/handler"
 	"novel-proxy/internal/logx"
 	"novel-proxy/internal/store"
@@ -27,6 +30,9 @@ const (
 )
 
 func main() {
+	staticDir := flag.String("static", "", "前端静态目录，优先于指针文件与 default 兜底")
+	flag.Parse()
+
 	cfg, err := config.Load(configPath, instancePath)
 	if err != nil {
 		// 日志还没起来，直接写 stderr 退出。
@@ -56,7 +62,28 @@ func main() {
 
 	engine := gin.New()
 	engine.Use(api.SlogMiddleware(lg), api.RecoveryMiddleware(lg, cfg.App.Mode))
-	engine.NoRoute(api.NoRoute)
+
+	// 静态目录解析：-static > 指针文件 > default/ 兜底 > 固定 404 页。
+	// 目录由 manager 提供，运行期换目录只重设 swap 里的 handler。
+	mgr := frontend.New("./data/frontends")
+	swap := &frontend.SwapHandler{}
+	frontendDir := ""
+	if *staticDir != "" {
+		frontendDir = *staticDir
+	} else if dir, ok := mgr.Resolve("reader"); ok {
+		frontendDir = dir
+	}
+	if frontendDir != "" {
+		swap.Set(frontend.FileServer(frontendDir))
+	}
+
+	engine.NoRoute(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			api.NoRoute(c)
+			return
+		}
+		swap.ServeHTTP(c.Writer, c.Request)
+	})
 
 	// 数据库只在 storage.enabled 时连接；未启用时 content 直接旁路缓存。
 	var articleStore store.ArticleStore
@@ -85,12 +112,15 @@ func main() {
 
 	srv := &http.Server{Addr: cfg.Server.Addr, Handler: engine}
 	go func() {
-		// frontend_dir 由 internal/frontend 的 manager 提供（W4），当前未配置。
 		slog.Info("novel-proxy 启动",
 			"mode", cfg.App.Mode,
 			"addr", cfg.Server.Addr,
-			"frontend_dir", "",
+			"frontend_dir", frontendDir,
 		)
+		if frontendDir == "" {
+			// 未配置静态目录的原因：无 -static 参数、无指针文件、无 default 兜底。
+			slog.Info("未配置前端目录，非 API 路径将返回固定 404 页")
+		}
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("error", "err", err.Error())
 			os.Exit(1)
