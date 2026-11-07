@@ -1,17 +1,67 @@
-# 所有键可省略，省略时用与下面相同的默认值。
-# 未知键会报错退出。
+# 基础配置，进 git，程序不写这个文件。
+# 运行期覆盖写入 data/instance.yaml（不进 git），环境变量优先级最高：
+#   APP_MODE / APP_ADDR / APP_LOG_LEVEL / APP_STORAGE_DSN
+# 所有键可省略取默认值，未知键启动报错。
+
 app:
-  mode: release
+  mode: release            # debug / release
+
 server:
-  addr: ":8080"
+  addr: 127.0.0.1:8080
   shutdown_timeout_seconds: 10
+  admin_path: ""           # 管理端路径段，init 向导设置后写入 instance.yaml
+
 log:
-  level: info
+  level: info              # debug / info / error
   file: ./logs/app.log
   max_size_mb: 50
-  max_backups: 7
+  max_backups: 14
   max_age_days: 14
   compress: true
+
+setup:
+  completed: false         # init 向导完成后写 instance.yaml
+
+admin:
+  username: ""
+  password_hash: ""        # bcrypt hash，只存在于 instance.yaml
+
+storage:
+  enabled: false
+  driver: ""               # sqlite / postgres / mysql / mongo
+  dsn: ""
+
 upstream:
   timeout_seconds: 10
   max_concurrency: 8
+
+rate_limit:
+  search:
+    mode: off              # global / per_ip / off
+    per_minute: 0
+    burst: 0
+  detail:
+    mode: off
+    per_minute: 0
+    burst: 0
+  catalog:
+    mode: off
+    per_minute: 0
+    burst: 0
+  content:
+    mode: off
+    per_minute: 0
+    burst: 0
+
+ip_filter:
+  mode: off                # off / allow / block
+  scope: all               # all / api / admin
+  rules: []                # CIDR 列表，最多 200 条
+
+content_rules:
+  default:
+    prepend: null          # *string：null 继承，空串抑制
+    append: null
+    replace: []            # 每条 { pattern, replacement, regex }
+    override: null
+  books: {}                # 按书覆盖，键为 book_id

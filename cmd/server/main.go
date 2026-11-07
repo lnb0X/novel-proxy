@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -21,11 +20,13 @@ import (
 	"novel-proxy/internal/upstream"
 )
 
-func main() {
-	configPath := flag.String("config", "", "配置文件路径，缺省依次取 APP_CONFIG 和 ./config.yaml")
-	flag.Parse()
+const (
+	configPath   = "./config.yaml"
+	instancePath = "./data/instance.yaml"
+)
 
-	cfg, err := config.Load(*configPath)
+func main() {
+	cfg, err := config.Load(configPath, instancePath)
 	if err != nil {
 		// 日志还没起来，直接写 stderr 退出。
 		fmt.Fprintln(os.Stderr, "加载配置失败:", err)
@@ -42,6 +43,9 @@ func main() {
 		"shutdown_timeout_seconds", cfg.Server.ShutdownTimeoutSeconds,
 		"log_level", cfg.Log.Level,
 		"log_file", cfg.Log.File,
+		"setup_completed", cfg.Setup.Completed,
+		"storage_enabled", cfg.Storage.Enabled,
+		"storage_driver", cfg.Storage.Driver,
 		"upstream_timeout_seconds", cfg.Upstream.TimeoutSeconds,
 		"upstream_max_concurrency", cfg.Upstream.MaxConcurrency,
 	)
@@ -61,7 +65,12 @@ func main() {
 
 	srv := &http.Server{Addr: cfg.Server.Addr, Handler: engine}
 	go func() {
-		slog.Info("novel-proxy 启动", "mode", cfg.App.Mode, "addr", cfg.Server.Addr)
+		// frontend_dir 由 internal/frontend 的 manager 提供（W4），当前未配置。
+		slog.Info("novel-proxy 启动",
+			"mode", cfg.App.Mode,
+			"addr", cfg.Server.Addr,
+			"frontend_dir", "",
+		)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("error", "err", err.Error())
 			os.Exit(1)

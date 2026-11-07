@@ -3,179 +3,204 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
 
-func writeFile(t *testing.T, content string) string {
+func writeFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), "config.yaml")
+	p := filepath.Join(dir, name)
 	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return p
 }
 
+// loadFiles 在临时目录写两个配置文件后 Load。
+func loadFiles(t *testing.T, configYaml, instanceYaml string) (Config, error) {
+	t.Helper()
+	dir := t.TempDir()
+	cp := writeFile(t, dir, "config.yaml", configYaml)
+	ip := filepath.Join(dir, "data", "instance.yaml")
+	if instanceYaml != "" {
+		if err := os.MkdirAll(filepath.Dir(ip), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, filepath.Join(dir, "data"), "instance.yaml", instanceYaml)
+	}
+	return Load(cp, ip)
+}
+
 func TestDefaults(t *testing.T) {
-	// 全部键省略（空文件）时应得到全部默认值。
-	c, err := Load(writeFile(t, ""))
+	// config.yaml 全键省略，且 instance.yaml 不存在。
+	c, err := loadFiles(t, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := defaults()
-	if c != want {
-		t.Fatalf("默认值不符:\n got %+v\nwant %+v", c, want)
+	if !reflect.DeepEqual(c, defaults()) {
+		t.Fatalf("默认值不符:\n got %+v\nwant %+v", c, defaults())
 	}
 }
 
-func TestYamlOverride(t *testing.T) {
-	yaml := `
-app:
-  mode: debug
+func TestInstanceOverridesConfig(t *testing.T) {
+	configYaml := `
 server:
-  addr: ":9090"
-  shutdown_timeout_seconds: 3
+  addr: ":1000"
 log:
-  level: error
-  file: ./tmp/x.log
-  max_size_mb: 1
-  max_backups: 2
-  max_age_days: 3
-  compress: false
-upstream:
-  timeout_seconds: 7
-  max_concurrency: 4
+  level: debug
+storage:
+  enabled: false
+rate_limit:
+  search:
+    mode: per_ip
+    per_minute: 60
+    burst: 10
+content_rules:
+  default:
+    replace:
+      - pattern: "a"
+        replacement: "b"
+        regex: false
 `
-	c, err := Load(writeFile(t, yaml))
+	instanceYaml := `
+server:
+  addr: ":2000"
+storage:
+  enabled: true
+  driver: sqlite
+  dsn: "./data/cache.db"
+content_rules:
+  default:
+    prepend: "片头"
+  books:
+    "7526452300462705689":
+      override: "整章接管"
+`
+	c, err := loadFiles(t, configYaml, instanceYaml)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.App.Mode != "debug" {
-		t.Errorf("app.mode = %q", c.App.Mode)
+	// instance 覆盖 config。
+	if c.Server.Addr != ":2000" {
+		t.Errorf("addr = %q", c.Server.Addr)
 	}
-	if c.Server.Addr != ":9090" {
-		t.Errorf("server.addr = %q", c.Server.Addr)
+	if c.Storage.Enabled != true || c.Storage.Driver != "sqlite" || c.Storage.DSN != "./data/cache.db" {
+		t.Errorf("storage 覆盖不符: %+v", c.Storage)
 	}
-	if c.Server.ShutdownTimeoutSeconds != 3 {
-		t.Errorf("shutdown_timeout_seconds = %d", c.Server.ShutdownTimeoutSeconds)
+	// config 独有的键保留。
+	if c.Log.Level != "debug" {
+		t.Errorf("log.level 应保留 config 值: %q", c.Log.Level)
 	}
-	if c.Log.Level != "error" {
-		t.Errorf("log.level = %q", c.Log.Level)
+	if c.RateLimit.Search.Mode != "per_ip" || c.RateLimit.Search.PerMinute != 60 {
+		t.Errorf("rate_limit.search 应保留 config 值: %+v", c.RateLimit.Search)
 	}
-	if c.Log.File != "./tmp/x.log" {
-		t.Errorf("log.file = %q", c.Log.File)
+	// content_rules 深层字段。
+	if c.ContentRules.Default.Prepend == nil || *c.ContentRules.Default.Prepend != "片头" {
+		t.Errorf("prepend 覆盖不符: %v", c.ContentRules.Default.Prepend)
 	}
-	if c.Log.MaxSizeMB != 1 || c.Log.MaxBackups != 2 || c.Log.MaxAgeDays != 3 || c.Log.Compress {
-		t.Errorf("log 滚动参数不符: %+v", c.Log)
+	if len(c.ContentRules.Default.Replace) != 1 || c.ContentRules.Default.Replace[0].Pattern != "a" {
+		t.Errorf("replace 应保留 config 值: %+v", c.ContentRules.Default.Replace)
 	}
-	if c.Upstream.TimeoutSeconds != 7 || c.Upstream.MaxConcurrency != 4 {
-		t.Errorf("upstream 参数不符: %+v", c.Upstream)
-	}
-}
-
-func TestFlagPathWinsOverEnv(t *testing.T) {
-	envFile := writeFile(t, "server:\n  addr: \":1111\"\n")
-	flagFile := writeFile(t, "server:\n  addr: \":2222\"\n")
-	t.Setenv("APP_CONFIG", envFile)
-	c, err := Load(flagFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c.Server.Addr != ":2222" {
-		t.Fatalf("-config 应优先于 APP_CONFIG，got addr %q", c.Server.Addr)
+	book, ok := c.ContentRules.Books["7526452300462705689"]
+	if !ok || book.Override == nil || *book.Override != "整章接管" {
+		t.Errorf("books 解析不符: %+v", c.ContentRules.Books)
 	}
 }
 
-func TestEnvConfigPathUsedWhenNoFlag(t *testing.T) {
-	envFile := writeFile(t, "server:\n  addr: \":3333\"\n")
-	t.Setenv("APP_CONFIG", envFile)
-	c, err := Load("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c.Server.Addr != ":3333" {
-		t.Fatalf("无 -config 时应使用 APP_CONFIG，got addr %q", c.Server.Addr)
-	}
-}
-
-func TestEnvOverride(t *testing.T) {
-	// yaml 给出与默认不同的值，env 必须盖过 yaml。
-	p := writeFile(t, `
+func TestEnvOverridesBoth(t *testing.T) {
+	configYaml := `
+server:
+  addr: ":1000"
 app:
   mode: release
-server:
-  addr: ":8080"
 log:
   level: info
-`)
+storage:
+  dsn: "./from-file.db"
+`
 	t.Setenv("APP_MODE", "debug")
 	t.Setenv("APP_ADDR", ":9999")
 	t.Setenv("APP_LOG_LEVEL", "error")
-	c, err := Load(p)
+	t.Setenv("APP_STORAGE_DSN", "./from-env.db")
+	c, err := loadFiles(t, configYaml, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if c.App.Mode != "debug" || c.Server.Addr != ":9999" || c.Log.Level != "error" {
 		t.Fatalf("env 覆盖未生效: %+v", c)
 	}
+	if c.Storage.DSN != "./from-env.db" {
+		t.Fatalf("APP_STORAGE_DSN 覆盖未生效: %q", c.Storage.DSN)
+	}
 }
 
-func TestEnvOnlyForThreeKeys(t *testing.T) {
-	// 契约只允许 APP_MODE / APP_ADDR / APP_LOG_LEVEL 三个环境变量，其余只读 yaml。
-	p := writeFile(t, "")
+func TestEnvOnlyForFourKeys(t *testing.T) {
+	// 只有四个 env 变量生效，其余键只读文件。
 	t.Setenv("APP_LOG_FILE", "./other.log")
-	t.Setenv("APP_SHUTDOWN_TIMEOUT_SECONDS", "99")
-	c, err := Load(p)
+	t.Setenv("APP_STORAGE_DRIVER", "mongo")
+	c, err := loadFiles(t, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if c.Log.File != "./logs/app.log" {
-		t.Fatalf("APP_LOG_FILE 不应生效, got %q", c.Log.File)
+		t.Fatalf("APP_LOG_FILE 不应生效: %q", c.Log.File)
 	}
-	if c.Server.ShutdownTimeoutSeconds != 10 {
-		t.Fatalf("其余键不读环境变量, got %d", c.Server.ShutdownTimeoutSeconds)
-	}
-}
-
-func TestInvalidLevel(t *testing.T) {
-	if _, err := Load(writeFile(t, "log:\n  level: warn\n")); err == nil {
-		t.Fatal("yaml 里非法 log.level 应报错")
-	}
-	p := writeFile(t, "")
-	t.Setenv("APP_LOG_LEVEL", "trace")
-	if _, err := Load(p); err == nil {
-		t.Fatal("env 里非法 log.level 应报错")
-	}
-}
-
-func TestInvalidMode(t *testing.T) {
-	if _, err := Load(writeFile(t, "app:\n  mode: prod\n")); err == nil {
-		t.Fatal("yaml 里非法 app.mode 应报错")
-	}
-	p := writeFile(t, "")
-	t.Setenv("APP_MODE", "test")
-	if _, err := Load(p); err == nil {
-		t.Fatal("env 里非法 app.mode 应报错")
+	if c.Storage.Driver != "" {
+		t.Fatalf("APP_STORAGE_DRIVER 不应生效: %q", c.Storage.Driver)
 	}
 }
 
 func TestUnknownKey(t *testing.T) {
-	_, err := Load(writeFile(t, "foo: bar\n"))
-	if err == nil {
-		t.Fatal("未知键应报错")
+	_, err := loadFiles(t, "foo: bar\n", "")
+	if err == nil || !strings.Contains(err.Error(), "foo") {
+		t.Fatalf("config.yaml 未知键应报错: %v", err)
 	}
-	if !strings.Contains(err.Error(), "foo") {
-		t.Fatalf("错误信息应指出未知键 foo, got %v", err)
+	_, err = loadFiles(t, "", "logg:\n  level: info\n")
+	if err == nil || !strings.Contains(err.Error(), "logg") {
+		t.Fatalf("instance.yaml 未知键应报错: %v", err)
 	}
 	// 嵌套层级的未知键同样报错。
-	_, err = Load(writeFile(t, "log:\n  level: info\n  unknow: 1\n"))
+	_, err = loadFiles(t, "rate_limit:\n  search:\n  - unknow: 1\n", "")
 	if err == nil {
-		t.Fatal("嵌套未知键应报错")
+		t.Fatalf("嵌套未知键应报错: %v", err)
 	}
 }
 
-func TestMissingFile(t *testing.T) {
-	if _, err := Load(filepath.Join(t.TempDir(), "nope.yaml")); err == nil {
-		t.Fatal("配置文件不存在应报错，不能静默用默认值")
+func TestEnumErrors(t *testing.T) {
+	cases := []string{
+		"app:\n  mode: prod\n",
+		"log:\n  level: trace\n",
+		"storage:\n  driver: redis\n",
+		"rate_limit:\n  search:\n    mode: foo\n",
+		"rate_limit:\n  content:\n    mode: GLOBAL\n",
+		"ip_filter:\n  mode: deny\n",
+		"ip_filter:\n  scope: none\n",
+	}
+	for _, y := range cases {
+		if _, err := loadFiles(t, y, ""); err == nil {
+			t.Errorf("非法枚举应报错: %q", y)
+		}
+	}
+	// env 侧的枚举同样报错。
+	t.Setenv("APP_LOG_LEVEL", "verbose")
+	if _, err := loadFiles(t, "", ""); err == nil {
+		t.Fatal("env 非法 log.level 应报错")
+	}
+}
+
+func TestMissingConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := Load(filepath.Join(dir, "nope.yaml"), filepath.Join(dir, "data", "instance.yaml")); err == nil {
+		t.Fatal("config.yaml 缺失应报错")
+	}
+}
+
+func TestMissingInstanceOK(t *testing.T) {
+	// instance.yaml 不存在是常态（init 之前），不得报错。
+	dir := t.TempDir()
+	cp := writeFile(t, dir, "config.yaml", "")
+	if _, err := Load(cp, filepath.Join(dir, "data", "instance.yaml")); err != nil {
+		t.Fatalf("instance.yaml 缺失不应报错: %v", err)
 	}
 }

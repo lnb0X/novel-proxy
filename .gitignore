@@ -3,3 +3,6 @@ logs/
 *.exe
 .env
 tmp/
+data/
+web/dist/
+web/node_modules/

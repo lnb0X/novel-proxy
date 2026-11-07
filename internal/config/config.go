@@ -1,7 +1,7 @@
 // Package config 负责加载并校验配置。
-// 文件路径优先级：-config 参数 > APP_CONFIG 环境变量 > ./config.yaml。
-// 键值覆盖：只有 app.mode、server.addr、log.level 支持环境变量
-// （APP_MODE / APP_ADDR / APP_LOG_LEVEL）。
+// 优先级：env > data/instance.yaml > config.yaml。
+// config.yaml 进 git，程序不写；data/instance.yaml 由 init 与运行期写入，
+// 不存在时跳过。config.yaml 必须存在。
 package config
 
 import (
@@ -21,6 +21,7 @@ type AppConfig struct {
 type ServerConfig struct {
 	Addr                   string `yaml:"addr"`
 	ShutdownTimeoutSeconds int    `yaml:"shutdown_timeout_seconds"`
+	AdminPath              string `yaml:"admin_path"`
 }
 
 type LogConfig struct {
@@ -32,56 +33,113 @@ type LogConfig struct {
 	Compress   bool   `yaml:"compress"`
 }
 
+type SetupConfig struct {
+	Completed bool `yaml:"completed"`
+}
+
+type AdminConfig struct {
+	Username     string `yaml:"username"`
+	PasswordHash string `yaml:"password_hash"`
+}
+
+type StorageConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Driver  string `yaml:"driver"`
+	DSN     string `yaml:"dsn"`
+}
+
 type UpstreamConfig struct {
 	TimeoutSeconds int `yaml:"timeout_seconds"`
 	MaxConcurrency int `yaml:"max_concurrency"`
 }
 
-type Config struct {
-	App      AppConfig      `yaml:"app"`
-	Server   ServerConfig   `yaml:"server"`
-	Log      LogConfig      `yaml:"log"`
-	Upstream UpstreamConfig `yaml:"upstream"`
+type RateLimitRule struct {
+	Mode      string `yaml:"mode"`
+	PerMinute int    `yaml:"per_minute"`
+	Burst     int    `yaml:"burst"`
 }
 
-// defaults 返回文档规定的全部默认值，先填默认值再让 yaml 覆盖。
+type RateLimitConfig struct {
+	Search  RateLimitRule `yaml:"search"`
+	Detail  RateLimitRule `yaml:"detail"`
+	Catalog RateLimitRule `yaml:"catalog"`
+	Content RateLimitRule `yaml:"content"`
+}
+
+type IPFilterConfig struct {
+	Mode  string   `yaml:"mode"`
+	Scope string   `yaml:"scope"`
+	Rules []string `yaml:"rules"`
+}
+
+// ReplaceRule 内容替换规则，级联语义见 DECISIONS 内容规则节。
+type ReplaceRule struct {
+	Pattern     string `yaml:"pattern"`
+	Replacement string `yaml:"replacement"`
+	Regex       bool   `yaml:"regex"`
+}
+
+type ContentRuleSet struct {
+	Prepend  *string       `yaml:"prepend"`
+	Append   *string       `yaml:"append"`
+	Replace  []ReplaceRule `yaml:"replace"`
+	Override *string       `yaml:"override"`
+}
+
+type ContentRulesConfig struct {
+	Default ContentRuleSet            `yaml:"default"`
+	Books   map[string]ContentRuleSet `yaml:"books"`
+}
+
+type Config struct {
+	App          AppConfig          `yaml:"app"`
+	Server       ServerConfig       `yaml:"server"`
+	Log          LogConfig          `yaml:"log"`
+	Setup        SetupConfig        `yaml:"setup"`
+	Admin        AdminConfig        `yaml:"admin"`
+	Storage      StorageConfig      `yaml:"storage"`
+	Upstream     UpstreamConfig     `yaml:"upstream"`
+	RateLimit    RateLimitConfig    `yaml:"rate_limit"`
+	IPFilter     IPFilterConfig     `yaml:"ip_filter"`
+	ContentRules ContentRulesConfig `yaml:"content_rules"`
+}
+
+// defaults 返回 DECISIONS.md 配置 schema 规定的全部默认值。
 func defaults() Config {
 	var c Config
 	c.App.Mode = "release"
-	c.Server.Addr = ":8080"
+	c.Server.Addr = "127.0.0.1:8080"
 	c.Server.ShutdownTimeoutSeconds = 10
 	c.Log.Level = "info"
 	c.Log.File = "./logs/app.log"
 	c.Log.MaxSizeMB = 50
-	c.Log.MaxBackups = 7
+	c.Log.MaxBackups = 14
 	c.Log.MaxAgeDays = 14
 	c.Log.Compress = true
 	c.Upstream.TimeoutSeconds = 10
 	c.Upstream.MaxConcurrency = 8
+	c.RateLimit.Search.Mode = "off"
+	c.RateLimit.Detail.Mode = "off"
+	c.RateLimit.Catalog.Mode = "off"
+	c.RateLimit.Content.Mode = "off"
+	c.IPFilter.Mode = "off"
+	c.IPFilter.Scope = "all"
 	return c
 }
 
-// Load 加载配置。flagPath 是 -config 参数的值，可以为空。
-// 解析不到文件、文件里有未知键、枚举字段取到非法值时返回错误。
-func Load(flagPath string) (Config, error) {
-	path := flagPath
-	if path == "" {
-		path = os.Getenv("APP_CONFIG")
-	}
-	if path == "" {
-		path = "./config.yaml"
-	}
-
+// Load 按 env > instancePath > configPath 的顺序叠加配置，
+// 再校验枚举。config.yaml 必须存在；instance.yaml 不存在时跳过。
+func Load(configPath, instancePath string) (Config, error) {
 	c := defaults()
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return Config{}, fmt.Errorf("读取配置 %s: %w", path, err)
+	if err := decodeInto(configPath, &c); err != nil {
+		return Config{}, err
 	}
-	dec := yaml.NewDecoder(bytes.NewReader(b))
-	// 未知键必须报错，防止拼写错误被静默忽略。
-	dec.KnownFields(true)
-	if err := dec.Decode(&c); err != nil && !errors.Is(err, io.EOF) {
-		return Config{}, fmt.Errorf("解析配置 %s: %w", path, err)
+	if _, err := os.Stat(instancePath); err == nil {
+		if err := decodeInto(instancePath, &c); err != nil {
+			return Config{}, err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return Config{}, fmt.Errorf("读取配置 %s: %w", instancePath, err)
 	}
 
 	if v := os.Getenv("APP_MODE"); v != "" {
@@ -93,16 +151,72 @@ func Load(flagPath string) (Config, error) {
 	if v := os.Getenv("APP_LOG_LEVEL"); v != "" {
 		c.Log.Level = v
 	}
+	if v := os.Getenv("APP_STORAGE_DSN"); v != "" {
+		c.Storage.DSN = v
+	}
 
+	if err := c.validate(); err != nil {
+		return Config{}, err
+	}
+	return c, nil
+}
+
+// decodeInto 把单个 yaml 文件解进 c。两个文件都开 KnownFields，
+// 未知键（含嵌套层级）报错，防止拼写错误被静默忽略。
+func decodeInto(path string, c *Config) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("读取配置 %s: %w", path, err)
+	}
+	dec := yaml.NewDecoder(bytes.NewReader(b))
+	dec.KnownFields(true)
+	if err := dec.Decode(c); err != nil && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("解析配置 %s: %w", path, err)
+	}
+	return nil
+}
+
+func (c Config) validate() error {
 	switch c.App.Mode {
 	case "debug", "release":
 	default:
-		return Config{}, fmt.Errorf("app.mode 非法值 %q", c.App.Mode)
+		return fmt.Errorf("app.mode 非法值 %q", c.App.Mode)
 	}
 	switch c.Log.Level {
 	case "debug", "info", "error":
 	default:
-		return Config{}, fmt.Errorf("log.level 非法值 %q", c.Log.Level)
+		return fmt.Errorf("log.level 非法值 %q", c.Log.Level)
 	}
-	return c, nil
+	switch c.Storage.Driver {
+	case "", "sqlite", "postgres", "mysql", "mongo":
+	default:
+		return fmt.Errorf("storage.driver 非法值 %q", c.Storage.Driver)
+	}
+	named := []struct {
+		name string
+		rule RateLimitRule
+	}{
+		{"search", c.RateLimit.Search},
+		{"detail", c.RateLimit.Detail},
+		{"catalog", c.RateLimit.Catalog},
+		{"content", c.RateLimit.Content},
+	}
+	for _, nr := range named {
+		switch nr.rule.Mode {
+		case "off", "global", "per_ip":
+		default:
+			return fmt.Errorf("rate_limit.%s.mode 非法值 %q", nr.name, nr.rule.Mode)
+		}
+	}
+	switch c.IPFilter.Mode {
+	case "off", "allow", "block":
+	default:
+		return fmt.Errorf("ip_filter.mode 非法值 %q", c.IPFilter.Mode)
+	}
+	switch c.IPFilter.Scope {
+	case "all", "api", "admin":
+	default:
+		return fmt.Errorf("ip_filter.scope 非法值 %q", c.IPFilter.Scope)
+	}
+	return nil
 }
