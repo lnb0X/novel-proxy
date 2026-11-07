@@ -6,7 +6,10 @@ import type { Me } from "./api";
 import { me } from "./api";
 import { AdminLayout } from "./Layout";
 import { LoginPage } from "./pages/Login";
-import { PlaceholderPage } from "./pages/Placeholder";
+import { StatsPage } from "./pages/StatsPage";
+import { CachePage } from "./pages/CachePage";
+import { RulesPage } from "./pages/RulesPage";
+import { AuditPage } from "./pages/AuditPage";
 import { OverviewPage } from "./pages/Overview";
 import { AccessPage, FlagsPage, RateLimitsPage } from "./pages/access";
 import {
@@ -72,7 +75,10 @@ export function AdminApp() {
             <Route path="account/password" element={<AccountPasswordPage />} />
             <Route path="config/log" element={<ConfigLogPage />} />
             <Route path="config/upstream" element={<ConfigUpstreamPage />} />
-            <Route path="*" element={<PlaceholderPage />} />
+            <Route path="stats" element={<StatsPage />} />
+            <Route path="cache" element={<CachePage />} />
+            <Route path="rules" element={<RulesPage />} />
+            <Route path="audit" element={<AuditPage />} />
           </Route>
         </Routes>
       </HashRouter>

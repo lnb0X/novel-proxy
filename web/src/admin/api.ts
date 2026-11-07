@@ -190,3 +190,104 @@ export function changePassword(oldPassword: string, newPassword: string): Promis
     body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
   });
 }
+
+export interface StatsOverview {
+  today_requests: number;
+  today_errors: number;
+  p95_ms: number;
+  cache_hit_rate: number;
+  per_api: Record<string, { requests: number; errors: number }>;
+  upstream_health: string;
+  recent_errors: { time: number; path: string; status: number; code: number; trace_id: string }[];
+}
+
+export function getStatsOverview(): Promise<StatsOverview> {
+  return apiFetch<StatsOverview>("/stats/overview");
+}
+
+export interface StatsQuery {
+  buckets: { time: number; requests: number; errors: number }[];
+  p50: number;
+  p95: number;
+  p99: number;
+  error_codes: Record<string, number>;
+  top_queries: { name: string; count: number }[];
+  top_books: { name: string; count: number }[];
+}
+
+export function getStatsQuery(from: string, to: string, api: string): Promise<StatsQuery> {
+  const qs = new URLSearchParams();
+  if (from) qs.set("from", from);
+  if (to) qs.set("to", to);
+  if (api) qs.set("api", api);
+  return apiFetch<StatsQuery>("/stats/query?" + qs.toString());
+}
+
+export interface AuditPageData {
+  total: number;
+  items: { ts: string; event: string; actor: string; ip: string; ua: string; detail: string; result: string }[];
+}
+
+export function getAudit(event: string, from: string, to: string, page: number, size: number): Promise<AuditPageData> {
+  const qs = new URLSearchParams({ page: String(page), size: String(size) });
+  if (event) qs.set("event", event);
+  if (from) qs.set("from", from);
+  if (to) qs.set("to", to);
+  return apiFetch<AuditPageData>("/audit?" + qs.toString());
+}
+
+export interface CacheListData {
+  total: number;
+  total_bytes: number;
+  hit_rate: number;
+  items: { item_id: string; book_id: string; title: string; size_bytes: number; created_at: number; ttl_left_seconds: number }[];
+}
+
+export function getCacheList(bookId: string, chapterId: string, page: number, size: number): Promise<CacheListData> {
+  const qs = new URLSearchParams({ page: String(page), size: String(size) });
+  if (bookId) qs.set("book_id", bookId);
+  if (chapterId) qs.set("chapter_id", chapterId);
+  return apiFetch<CacheListData>("/cache?" + qs.toString());
+}
+
+export function deleteCacheItem(itemId: string): Promise<void> {
+  return apiFetch("/cache/" + itemId, { method: "DELETE" });
+}
+
+export function deleteCacheByBook(bookId: string): Promise<{ deleted: number }> {
+  return apiFetch("/cache?book_id=" + bookId, { method: "DELETE" });
+}
+
+export function deleteCacheAll(): Promise<{ deleted: number }> {
+  return apiFetch("/cache/all", { method: "DELETE", body: JSON.stringify({ confirm: "DELETE" }) });
+}
+
+export interface ContentRules {
+  default: {
+    prepend: string | null;
+    append: string | null;
+    replace: { pattern: string; replacement: string; regex: boolean }[];
+    override: string | null;
+  };
+  books: Record<string, {
+    prepend: string | null;
+    append: string | null;
+    replace: { pattern: string; replacement: string; regex: boolean }[];
+    override: string | null;
+  }>;
+}
+
+export function getContentRules(): Promise<ContentRules> {
+  return apiFetch<ContentRules>("/content-rules");
+}
+
+export function putContentRules(c: ContentRules): Promise<ContentRules> {
+  return apiFetch<ContentRules>("/content-rules", { method: "PUT", body: JSON.stringify(c) });
+}
+
+export function previewRules(bookId: string, chapterId: string): Promise<{ original: string | null; result: string; applied: { rule: string; hits: number }[] }> {
+  return apiFetch("/content-rules/preview", {
+    method: "POST",
+    body: JSON.stringify({ book_id: bookId, chapter_id: chapterId }),
+  });
+}
