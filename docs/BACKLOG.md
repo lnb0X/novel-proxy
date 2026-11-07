@@ -48,7 +48,7 @@
         修改指针文件并触发重新加载后目录切换生效
       完成后 git tag W4-done
 
-- [ ] W5 JWT 认证
+- [x] W5 JWT 认证
       内存 key（atomic.Pointer）、签发、校验、滑动续期、绝对上限
       login / logout / me / revoke
       登录失败限流
