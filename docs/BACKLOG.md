@@ -25,7 +25,7 @@
         go run ./cmd/verify 通过（含 tsc 与 vite build）
       完成后 git tag R1-done
 
-- [ ] R2 搜索页
+- [x] R2 搜索页
       输入框回车触发，q 与 page 同步到 URL（useSearchParams）
       结果卡片：封面 60x80 + 标题 / 作者 · 分类 / 摘要两行省略
       「加载更多」用接口返回的 next_offset

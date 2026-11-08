@@ -183,6 +183,24 @@ a {
   border-color: var(--muted);
 }
 
+/* 搜索输入框 */
+.search-input {
+  width: 100%;
+  max-width: var(--reader-max-width);
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  font-family: inherit;
+  font-size: calc(var(--reader-font-size));
+  padding: 10px 12px;
+  margin-bottom: 16px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--muted);
+}
+
 /* 顶部导航（非悬浮，普通文档流，不遮挡正文） */
 .topnav {
   max-width: var(--reader-max-width);

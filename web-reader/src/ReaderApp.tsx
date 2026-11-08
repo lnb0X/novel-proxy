@@ -5,7 +5,10 @@ import { BookPage } from "./pages/BookPage";
 import { ReaderPage } from "./pages/ReaderPage";
 import "./reader.css";
 
-const queryClient = new QueryClient();
+// 阅读端快速失败：上游错误不重试，错误态立即展示。
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+});
 
 export function ReaderApp() {
   return (
