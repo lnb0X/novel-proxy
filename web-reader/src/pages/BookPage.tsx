@@ -13,6 +13,7 @@ export function BookPage() {
   const [params] = useSearchParams();
   const toc = Math.max(1, Number(params.get("toc") ?? "1") || 1);
 
+  const [introOpen, setIntroOpen] = useState(false);
   const detail = useQuery({
     queryKey: ["detail", bookId],
     queryFn: () => getBookDetail(bookId),
@@ -50,7 +51,6 @@ export function BookPage() {
 
   const d = detail.data;
   const cat = catalog.data;
-  const [introOpen, setIntroOpen] = useState(false);
   const chapterId = currentChapterId(params, cat);
   const totalPages = Math.max(1, Math.ceil(cat.chapters.length / PAGE_SIZE));
 

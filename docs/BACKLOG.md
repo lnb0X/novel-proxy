@@ -86,7 +86,7 @@
         删除版本后列表里消失
       完成后 git tag R5-done
 
-- [ ] R6 部署与冒烟
+- [x] R6 部署与冒烟
       构建 web-reader → 打 zip → 通过 R5 页面上传并激活
       首版同时放到 data/frontends/reader/default/ 作为出厂默认
       写三条 Playwright 冒烟：
