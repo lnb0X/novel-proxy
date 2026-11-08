@@ -1,0 +1,318 @@
+/* 初始化向导样式。变量层为唯一配色来源，取值与管理端（AntD 默认
+   token）对齐，圆角统一 6px。不引组件库。 */
+:root {
+  --page-bg: #f5f5f5;
+  --card-bg: #ffffff;
+  --fg: #1f1f1f;
+  --fg-muted: #8c8c8c;
+  --line: #d9d9d9;
+  --primary: #1677ff;
+  --primary-hover: #4096ff;
+  --danger: #cf1322;
+  --success: #389e0d;
+  --radius: 6px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--page-bg);
+  color: var(--fg);
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.card {
+  width: 100%;
+  max-width: 480px;
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 32px 28px;
+}
+
+.card h1 {
+  margin: 0 0 20px;
+  font-size: 20px;
+  line-height: 1.4;
+}
+
+.card p {
+  margin: 8px 0;
+}
+
+/* 步骤指示 */
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.steps-count {
+  color: var(--fg-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.steps-dots {
+  display: flex;
+  flex: 1;
+  justify-content: space-between;
+}
+
+.step-dot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg-muted);
+}
+
+.step-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  background: var(--card-bg);
+}
+
+.step-name {
+  font-size: 12px;
+}
+
+.step-dot.cur {
+  color: var(--primary);
+}
+
+.step-dot.cur .step-num {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.step-dot.past {
+  color: var(--fg);
+}
+
+.step-dot.past .step-num {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* 表单 */
+.field {
+  display: block;
+  margin: 16px 0;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  color: var(--fg);
+  font-size: 14px;
+}
+
+.field input:focus,
+.field select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.field-err {
+  margin: 4px 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.pw-row {
+  display: flex;
+  gap: 8px;
+}
+
+.pw-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.pw-toggle {
+  flex: none;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+/* 密码规则 */
+.rules {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+}
+
+.rule {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.rule-mark {
+  flex: none;
+  font-weight: 600;
+}
+
+.rule.ok {
+  color: var(--fg);
+}
+
+.rule.ok .rule-mark {
+  color: var(--success);
+}
+
+.rule.bad {
+  color: var(--fg-muted);
+}
+
+.rule.bad .rule-mark {
+  color: var(--danger);
+}
+
+/* 按钮：主按钮实心，次按钮描边 */
+.btn-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.btn {
+  height: 36px;
+  padding: 0 20px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--card-bg);
+  color: var(--fg);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.btn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.btn.primary:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: #fff;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn:disabled:hover {
+  border-color: var(--line);
+  color: var(--fg);
+}
+
+.btn.primary:disabled:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* 确认页 */
+.summary {
+  list-style: none;
+  margin: 16px 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+
+.summary li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.summary span {
+  color: var(--fg-muted);
+  flex: none;
+}
+
+.summary b {
+  font-weight: 500;
+  word-break: break-all;
+  text-align: right;
+}
+
+.effective {
+  margin: 16px 0 0;
+  padding: 10px 12px;
+  background: #f0f7ff;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  color: var(--primary);
+}
+
+/* 完成页 */
+.admin-link {
+  color: var(--primary);
+  word-break: break-all;
+}
+
+.muted {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.error {
+  color: var(--danger);
+}
+
+code {
+  font-family: Consolas, monospace;
+}

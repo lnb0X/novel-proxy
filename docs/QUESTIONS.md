@@ -128,3 +128,15 @@ AuthenticationFailed。
 证据：internal/frontend/manager.go Reload；BACKLOG R3/R4 验收依赖
       深链接刷新。
 影响：W4 已补齐（非 v0.3 新契约），R3/R4 可正常做。
+
+## Q10 init 前端 admin_path 长度规格与后端上限冲突
+问题：任务规格要求前端校验 ^[a-z0-9]{16,64}$，但后端 adminPathRe 是
+      ^[a-zA-Z0-9_-]{1,32}$，且被 init_test.go 冻结（用例 admin_path
+      "adm" 断言可接受），不得改测试。33-64 位的路径前端放行、
+      后端必拒，会出现走不到头的死路。
+证据：internal/handler/init.go adminPathRe；internal/handler/init_test.go
+      第 150/175 行；docs/QUESTIONS.md 无既有裁决。
+影响：前端按 16-32 位实现（正则 ^[a-z0-9]{16,64}$ 之外叠加服务端
+      32 位上限，超限报「长度不能超过 32 位（服务端限制）」），保留字
+      检查前置于长度。若确需 16-64，须改后端正则并同步改 init_test
+      用例，由仓库所有者裁决后另开任务。
