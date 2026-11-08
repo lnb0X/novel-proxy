@@ -10,6 +10,7 @@ import { StatsPage } from "./pages/StatsPage";
 import { CachePage } from "./pages/CachePage";
 import { RulesPage } from "./pages/RulesPage";
 import { AuditPage } from "./pages/AuditPage";
+import { FrontendsPage } from "./pages/FrontendsPage";
 import { OverviewPage } from "./pages/Overview";
 import { AccessPage, FlagsPage, RateLimitsPage } from "./pages/access";
 import {
@@ -75,6 +76,7 @@ export function AdminApp() {
             <Route path="account/password" element={<AccountPasswordPage />} />
             <Route path="config/log" element={<ConfigLogPage />} />
             <Route path="config/upstream" element={<ConfigUpstreamPage />} />
+            <Route path="frontends" element={<FrontendsPage />} />
             <Route path="stats" element={<StatsPage />} />
             <Route path="cache" element={<CachePage />} />
             <Route path="rules" element={<RulesPage />} />

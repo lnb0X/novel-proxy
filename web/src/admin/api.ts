@@ -291,3 +291,51 @@ export function previewRules(bookId: string, chapterId: string): Promise<{ origi
     body: JSON.stringify({ book_id: bookId, chapter_id: chapterId }),
   });
 }
+
+export interface FrontendVersion {
+  version: string;
+  size: number;
+  files: number;
+  created_at: number;
+}
+
+export interface FrontendApp {
+  current: string;
+  previous: string;
+  versions: FrontendVersion[];
+}
+
+export function getFrontendsAll(): Promise<{ reader: FrontendApp; admin: FrontendApp }> {
+  return apiFetch("/frontends");
+}
+
+export function uploadFrontend(app: string, file: File): Promise<FrontendVersion> {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch<FrontendVersion>("/frontends/" + app + "/upload", {
+    method: "POST",
+    body: form,
+  });
+}
+
+export function activateFrontend(app: string, version: string): Promise<{ previous: string }> {
+  return apiFetch("/frontends/" + app + "/activate", {
+    method: "POST",
+    body: JSON.stringify({ version, confirm_within_seconds: 10 }),
+  });
+}
+
+export function confirmFrontend(app: string, version: string): Promise<void> {
+  return apiFetch("/frontends/" + app + "/confirm", {
+    method: "POST",
+    body: JSON.stringify({ version }),
+  });
+}
+
+export function rollbackFrontend(app: string): Promise<void> {
+  return apiFetch("/frontends/" + app + "/rollback", { method: "POST" });
+}
+
+export function deleteFrontend(app: string, version: string): Promise<void> {
+  return apiFetch("/frontends/" + app + "/" + version, { method: "DELETE" });
+}
