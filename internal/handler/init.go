@@ -60,6 +60,7 @@ type InitWizard struct {
 	ipLocks      map[string]time.Time
 	cfg          *config.Config
 	instancePath string
+	onConfirm    func() error
 }
 
 // NewInitWizard 启动时调用。未初始化状态下确保令牌存在（复用或新生成
@@ -93,6 +94,16 @@ func NewInitWizard(cfg *config.Config, instancePath, dataDir string, lg *slog.Lo
 	}
 	lg.Info("初始化令牌已生成（重启不变，完成初始化后失效）", "token", w.token)
 	return w
+}
+
+// SetOnConfirm 注入 confirm 热挂载钩子：instance.yaml 写盘、内存配置
+// 更新之后调用（连接 storage、重建 engine 并整体替换）。钩子失败时
+// Confirm 回滚内存配置并向导返回 50001，此时向导仍可用，可修正后
+// 重新 confirm。
+func (w *InitWizard) SetOnConfirm(fn func() error) {
+	w.mu.Lock()
+	w.onConfirm = fn
+	w.mu.Unlock()
 }
 
 // session 校验 init_session cookie，返回是否有效（顺带清理过期会话）。
@@ -326,11 +337,13 @@ func (w *InitWizard) Database() gin.HandlerFunc {
 }
 
 // Confirm POST /init/api/confirm：账号必填；一次性写 instance.yaml，
-// 内存配置同步生效，删除令牌文件。
+// 内存配置同步生效并触发热挂载（连接 storage、整体替换 engine，
+// 不重启进程）。热挂载失败时回滚内存配置返回 50001，向导保持可用。
 func (w *InitWizard) Confirm() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		w.mu.Lock()
 		d := w.draft
+		onConfirm := w.onConfirm
 		w.mu.Unlock()
 		if !d.accountSet {
 			api.Fail(c, api.CodeBadRequest, "请先完成账号步骤")
@@ -366,7 +379,10 @@ func (w *InitWizard) Confirm() gin.HandlerFunc {
 			return
 		}
 
-		// 内存配置同步生效；admin 路由与存储连接按约定重启后挂载。
+		// 内存配置同步生效。先改再挂载：buildEngine 要读到新值
+		// （挂载管理路由、guard 判定 /init/* 为 404）。失败整体回滚。
+		oldSetup, oldUser, oldHash := w.cfg.Setup.Completed, w.cfg.Admin.Username, w.cfg.Admin.PasswordHash
+		oldPath, oldEnabled, oldDriver, oldDSN := w.cfg.Server.AdminPath, w.cfg.Storage.Enabled, w.cfg.Storage.Driver, w.cfg.Storage.DSN
 		w.cfg.Setup.Completed = true
 		w.cfg.Admin.Username = d.username
 		w.cfg.Admin.PasswordHash = hash
@@ -374,6 +390,19 @@ func (w *InitWizard) Confirm() gin.HandlerFunc {
 		w.cfg.Storage.Enabled = d.storageOn
 		w.cfg.Storage.Driver = d.driver
 		w.cfg.Storage.DSN = d.dsn
+		if onConfirm != nil {
+			if err := onConfirm(); err != nil {
+				w.cfg.Setup.Completed = oldSetup
+				w.cfg.Admin.Username = oldUser
+				w.cfg.Admin.PasswordHash = oldHash
+				w.cfg.Server.AdminPath = oldPath
+				w.cfg.Storage.Enabled = oldEnabled
+				w.cfg.Storage.Driver = oldDriver
+				w.cfg.Storage.DSN = oldDSN
+				failInternal(c, err)
+				return
+			}
+		}
 
 		_ = os.Remove(filepath.Join(filepath.Dir(w.instancePath), initTokenFile))
 		api.OK(c, gin.H{"admin_path": d.adminPath})

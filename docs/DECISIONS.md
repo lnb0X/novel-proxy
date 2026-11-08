@@ -62,9 +62,11 @@ trace_id → recover → ipfilter → initguard → secret → auth
   log.level、flags.*、storage.enabled、rate_limit.*、ip_filter.*、
   content_rules.*、upstream.timeout_seconds、upstream.max_concurrency
 需重启：
-  server.addr、server.admin_path、storage.driver、storage.dsn、log.file、
-  log.max_size_mb、log.max_backups、log.max_age_days、log.compress
+  server.addr、log.file、log.max_size_mb、log.max_backups、
+  log.max_age_days、log.compress
   （lumberjack 的滚动参数在它自己的互斥锁里读，运行期不可变，见 W14）
+  server.admin_path、storage.driver、storage.dsn 由 init confirm 写入后
+  立即热挂载生效，不重启（init 只会成功一次，不存在二次变更场景）。
 
 ## 配置 schema
 config.yaml，所有键可省略取默认值。未知键必须报错（KnownFields）。
@@ -218,6 +220,19 @@ ttl_left_seconds 恒为 0（W14 裁决）。
 - data/frontends/init/ 不进 git，每个部署环境自己放一次，写进部署说明
 - 管理端的上传/切换接口仍然只接受 reader 和 admin；init 只能通过
   文件系统更换，不走 web
+
+## init 热挂载
+- confirm 成功后整体替换 handler：main 的 buildEngine(cfg, deps) 产出
+  完整 engine，装进 api.Swappable（http.Server.Handler 指向它）。
+  禁止在运行中的 engine 上 AddRoute——gin 路由树不支持并发写
+- 换 engine 的已知副作用，刻意取舍，不是 bug：旧 engine 上的限流器、
+  登录失败计数、init 会话与 JWT 签名 key 一并丢弃。刚 init 完的场景
+  本来无状态，等价于一次重启
+- 在途请求在旧 engine 上自然跑完，新请求立即走新 engine；
+  /init/* 在 guard 判定下立即 404
+- storage 连接随新 engine 新建；旧 engine 的 statStore 由 cleanup 关闭
+  （其 ArticleStore 连接池没有 Close 接口，仅在预置
+  storage.enabled=true 的非常规配置下会遗留一个空闲连接池）
 
 ## 日志
 - slog JSON，同时写 stdout 和文件

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -179,5 +180,58 @@ func TestInitWizardFullFlow(t *testing.T) {
 	// 令牌文件删除。
 	if _, err := os.Stat(filepath.Join(dataDir, "init-token.txt")); !os.IsNotExist(err) {
 		t.Fatal("confirm 后令牌文件应删除")
+	}
+}
+
+// 热挂载钩子：confirm 在写盘与内存配置更新后调用钩子；钩子失败时
+// 内存配置整体回滚、返回 50001，向导保持可用并可重新 confirm。
+func TestInitConfirmHotSwapHook(t *testing.T) {
+	r, w, cfg, dataDir, instancePath := newInitEnv(t, false)
+	session, _ := getToken(t, r, w)
+
+	for _, step := range []struct {
+		path string
+		body string
+	}{
+		{"/init/api/account", `{"username":"boss","password":"Abcdef1!Abcde","admin_path":"adm"}`},
+		{"/init/api/storage", `{"enabled":false}`},
+	} {
+		resp := postInit(r, step.path, step.body, session)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("%s = %d %s", step.path, resp.Code, resp.Body.String())
+		}
+	}
+
+	// 钩子失败：配置回滚、50001、令牌文件保留、可重新 confirm。
+	var calls int
+	w.SetOnConfirm(func() error {
+		calls++
+		return errors.New("模拟热挂载失败")
+	})
+	resp := postInit(r, "/init/api/confirm", "", session)
+	if resp.Code != http.StatusInternalServerError {
+		t.Fatalf("钩子失败应 50001: %d %s", resp.Code, resp.Body.String())
+	}
+	if calls != 1 {
+		t.Fatalf("钩子应被调用一次, got %d", calls)
+	}
+	if cfg.Setup.Completed || cfg.Server.AdminPath != "" {
+		t.Fatalf("钩子失败后内存配置应回滚: %+v", cfg)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "init-token.txt")); err != nil {
+		t.Fatalf("钩子失败后令牌文件应保留: %v", err)
+	}
+	// 向导仍可用：换成功钩子重新 confirm。
+	w.SetOnConfirm(func() error { return nil })
+	resp = postInit(r, "/init/api/confirm", "", session)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("重试 confirm 应成功: %d %s", resp.Code, resp.Body.String())
+	}
+	if !cfg.Setup.Completed {
+		t.Fatalf("成功后内存配置应生效: %+v", cfg)
+	}
+	// instance.yaml 已写盘。
+	if _, err := os.Stat(instancePath); err != nil {
+		t.Fatalf("instance.yaml 应存在: %v", err)
 	}
 }
