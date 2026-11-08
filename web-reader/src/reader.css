@@ -307,3 +307,15 @@ a {
   margin-left: 12px;
   color: var(--muted);
 }
+
+/* 简介 5 行折叠 */
+.intro-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.intro-toggle {
+  margin-bottom: 12px;
+}

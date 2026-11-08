@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getBookDetail, getCatalog, type Catalog } from "../api";
@@ -49,6 +50,7 @@ export function BookPage() {
 
   const d = detail.data;
   const cat = catalog.data;
+  const [introOpen, setIntroOpen] = useState(false);
   const chapterId = currentChapterId(params, cat);
   const totalPages = Math.max(1, Math.ceil(cat.chapters.length / PAGE_SIZE));
 
@@ -64,9 +66,14 @@ export function BookPage() {
           </p>
         </div>
       </div>
-      <p className="muted intro" data-expanded="false">
-        {d.intro}
-      </p>
+      <div>
+        <p className={"intro" + (introOpen ? "" : " intro-clamp")}>{d.intro}</p>
+        {d.intro.length > 80 ? (
+          <button className="btn intro-toggle" onClick={() => setIntroOpen(!introOpen)}>
+            {introOpen ? "收起" : "展开"}
+          </button>
+        ) : null}
+      </div>
       <p>
         <Link className="btn" to={readUrl(bookId, firstChapterId(cat))}>
           开始阅读
