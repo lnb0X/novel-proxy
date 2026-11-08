@@ -10,3 +10,5 @@ web/dist/
 web/node_modules/
 web-init/dist/
 web-init/node_modules/
+web-reader/dist/
+web-reader/node_modules/
