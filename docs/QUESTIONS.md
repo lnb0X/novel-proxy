@@ -118,3 +118,13 @@ authSource=<as> 后 2026-11-08 验收通过：mongo live 全链路 ALL PASS
 DeleteAll 归零），验收驱动 tmp/w10mongo.go（验收后删除）。
 原始报错记录：authSource=<as> 时 SCRAM-SHA-1 与 SHA-256 均返回
 AuthenticationFailed。
+
+## Q9 reader 挂载点缺 SPA 兜底（W4 遗留，本卷补齐）
+问题：DECISIONS 明写「阅读端用 BrowserRouter（有 SPA 兜底）」，但 W4
+      实现的 reader 挂载点是纯静态服务，刷新 /books/:id 会 404。
+      W4 时 reader 尚不存在所以未暴露；v0.3 BrowserRouter 使其成为
+      阻塞。已在 reader 挂载点补 SPA 兜底（无扩展名路径回落
+      index.html，带扩展名资源仍空 404），不改 /api/* 契约。
+证据：internal/frontend/manager.go Reload；BACKLOG R3/R4 验收依赖
+      深链接刷新。
+影响：W4 已补齐（非 v0.3 新契约），R3/R4 可正常做。

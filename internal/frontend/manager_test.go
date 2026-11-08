@@ -177,3 +177,31 @@ func TestFileServer(t *testing.T) {
 		t.Fatalf("目录外文件不可达: %d", w.Code)
 	}
 }
+
+// TestReaderSPAFallback reader 的 SPA 兜底：无扩展名路径回落 index.html，
+// 带扩展名的资源未命中仍为空 body 404。
+func TestReaderSPAFallback(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "reader", "default", "index.html"), "<p>spa</p>")
+	writeFile(t, filepath.Join(base, "reader", "default", "assets", "app.js"), "1;")
+
+	m := New(base)
+	swap := &SwapHandler{}
+	m.Mount("reader", swap, "/", true)
+	m.Reload("reader")
+
+	get := func(p string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		swap.ServeHTTP(w, httptest.NewRequest(http.MethodGet, p, nil))
+		return w
+	}
+	if w := get("/"); w.Code != 200 || !strings.Contains(w.Body.String(), "spa") {
+		t.Fatalf("/ = %d %s", w.Code, w.Body.String())
+	}
+	if w := get("/books/123"); w.Code != 200 || !strings.Contains(w.Body.String(), "spa") {
+		t.Fatalf("无扩展名路由应回落 index.html: %d %s", w.Code, w.Body.String())
+	}
+	if w := get("/assets/missing.js"); w.Code != 404 || w.Body.Len() != 0 {
+		t.Fatalf("带扩展名未命中应空 404: %d", w.Code)
+	}
+}

@@ -100,20 +100,21 @@ func main() {
 		frontendDir = *staticDir
 		swap.Set(frontend.FileServer(frontendDir, "/"))
 	} else {
-		mgr.Mount("reader", swap, "/")
+		// reader 用 BrowserRouter，挂载点带 SPA 兜底（无扩展名回落 index.html）。
+		mgr.Mount("reader", swap, "/", true)
 		mgr.Reload("reader")
 		frontendDir, _ = mgr.Resolve("reader")
 	}
 	if cfg.Server.AdminPath != "" {
 		// 管理端 SPA 挂在 /<secret>/ 下，页面路径免 token，
 		// 版本上传激活后由 manager 直接换 handler。
-		mgr.Mount("admin", adminSwap, "/"+cfg.Server.AdminPath)
+		mgr.Mount("admin", adminSwap, "/"+cfg.Server.AdminPath, false)
 		mgr.Reload("admin")
 	}
 	// init 页面是 frontends 的第三个 app：指针 > default > Go 固定说明页，
 	// 重启生效；-static 不作用于它。
 	initSwap := &frontend.SwapHandler{}
-	mgr.Mount("init", initSwap, "/init")
+	mgr.Mount("init", initSwap, "/init", false)
 	mgr.Reload("init")
 	if dir, ok := mgr.Resolve("init"); ok {
 		initSwap.Set(frontend.FileServer(dir, "/init"))

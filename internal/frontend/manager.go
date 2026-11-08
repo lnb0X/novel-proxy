@@ -56,20 +56,22 @@ func NotFound(w http.ResponseWriter) {
 type Manager struct {
 	base string
 
-	mu       sync.Mutex
-	swaps    map[string]*SwapHandler
-	prefixes map[string]string
-	pending  map[string]*pendingSwitch
-	lg       *slog.Logger
+	mu          sync.Mutex
+	swaps       map[string]*SwapHandler
+	prefixes    map[string]string
+	spaFallback map[string]bool
+	pending     map[string]*pendingSwitch
+	lg          *slog.Logger
 }
 
 // New 构建 manager，base 是版本根目录（如 ./data/frontends）。
 func New(base string) *Manager {
 	return &Manager{
-		base:     base,
-		swaps:    map[string]*SwapHandler{},
-		prefixes: map[string]string{},
-		pending:  map[string]*pendingSwitch{},
+		base:        base,
+		swaps:       map[string]*SwapHandler{},
+		prefixes:    map[string]string{},
+		spaFallback: map[string]bool{},
+		pending:     map[string]*pendingSwitch{},
 	}
 }
 
@@ -80,11 +82,13 @@ func (m *Manager) SetLogger(lg *slog.Logger) {
 
 // Mount 登记某 app 的可换 handler 与它的 URL 前缀（reader 为 "/"，
 // admin 为 "/<secret>"），Reload 时按前缀解析路径。
-func (m *Manager) Mount(app string, swap *SwapHandler, urlPrefix string) {
+// spaFallback：reader 用 BrowserRouter，未命中无扩展名路径回落 index.html。
+func (m *Manager) Mount(app string, swap *SwapHandler, urlPrefix string, spaFallback bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.swaps[app] = swap
 	m.prefixes[app] = urlPrefix
+	m.spaFallback[app] = spaFallback
 }
 
 // Reload 重新解析 app 目录并替换内存中的 handler；解析失败回到固定 404 页。
@@ -97,7 +101,11 @@ func (m *Manager) Reload(app string) {
 		return
 	}
 	if dir, ok := m.Resolve(app); ok {
-		swap.Set(FileServer(dir, prefix))
+		if m.spaFallback[app] {
+			swap.Set(ReaderFileServer(dir, prefix))
+		} else {
+			swap.Set(FileServer(dir, prefix))
+		}
 		return
 	}
 	swap.Set(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { NotFound(w) }))
@@ -105,10 +113,10 @@ func (m *Manager) Reload(app string) {
 
 // VersionInfo GET /frontends 里 versions[] 的一项。
 type VersionInfo struct {
-	Version   string    `json:"version"`
-	Size      int64     `json:"size"`
-	Files     int       `json:"files"`
-	CreatedAt int64     `json:"created_at"`
+	Version   string `json:"version"`
+	Size      int64  `json:"size"`
+	Files     int    `json:"files"`
+	CreatedAt int64  `json:"created_at"`
 }
 
 // ListVersions 列出 app 下已上传的版本目录（不含 default 与临时目录）。
@@ -402,6 +410,34 @@ func FileServer(dir, urlPrefix string) http.Handler {
 		}
 		defer f.Close()
 		http.ServeContent(w, r, info.Name(), info.ModTime(), f)
+	})
+}
+
+// ReaderFileServer 带SPA兜底的静态服务：无扩展名的路径未命中时
+// 回落 index.html（DECISIONS「阅读端用 BrowserRouter（有 SPA 兜底）」），
+// 带扩展名的资源（js/css/图片）未命中仍为空 body 404。
+func ReaderFileServer(dir, urlPrefix string) http.Handler {
+	inner := FileServer(dir, urlPrefix)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rel := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		if rel == "" || rel == "." {
+			rel = "index.html"
+		}
+		if !strings.Contains(rel, ".") {
+			// 无扩展名 → 路由路径，回落 index.html。
+			index := filepath.Join(dir, "index.html")
+			if info, err := os.Stat(index); err == nil && !info.IsDir() {
+				f, err := os.Open(index)
+				if err == nil {
+					defer f.Close()
+					w.Header().Set("Content-Type", "text/html; charset=utf-8")
+					w.Header().Set("Cache-Control", "no-store")
+					http.ServeContent(w, r, "index.html", info.ModTime(), f)
+					return
+				}
+			}
+		}
+		inner.ServeHTTP(w, r)
 	})
 }
 

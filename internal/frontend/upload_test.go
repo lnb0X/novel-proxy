@@ -35,8 +35,8 @@ func TestUploadValidZip(t *testing.T) {
 	base := t.TempDir()
 	m := New(base)
 	info, err := m.Upload("reader", bytes.NewReader(makeZip(t, map[string]string{
-		"index.html":      "<p>v1</p>",
-		"assets/app.js":   "console.log(1)",
+		"index.html":       "<p>v1</p>",
+		"assets/app.js":    "console.log(1)",
 		"assets/sub/x.css": "body{}",
 	})))
 	if err != nil {
@@ -147,7 +147,7 @@ func TestActivateAutoRollback(t *testing.T) {
 
 	m := New(base)
 	swap := &SwapHandler{}
-	m.Mount("reader", swap, "/")
+	m.Mount("reader", swap, "/", false)
 	m.Reload("reader")
 	body := func() string {
 		w := httptest.NewRecorder()
@@ -203,7 +203,7 @@ func TestRollbackToggles(t *testing.T) {
 		t.Fatal(err)
 	}
 	swap := &SwapHandler{}
-	m.Mount("reader", swap, "/")
+	m.Mount("reader", swap, "/", false)
 	m.Reload("reader")
 
 	// 预置回滚点：从 v1 回到 default。
