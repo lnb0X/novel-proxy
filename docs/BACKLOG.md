@@ -48,7 +48,7 @@
         目录为空时显示「暂无目录」，不是空白
       完成后 git tag R3-done
 
-- [ ] R4 正文页
+- [x] R4 正文页
       并行请求 content 与 catalog（后者用于算上下章）
       顶栏：返回（固定跳 /books/:bookId，不用 history.back）、
             章节名、目录
