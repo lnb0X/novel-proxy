@@ -46,16 +46,87 @@ test("从零部署后能完整读一章", async ({ page }) => {
   await page.waitForSelector(".result-item", { timeout: 20000 });
   // 进详情页（固定 book_id，有章节）。
   await page.goto("/books/7526452300462705689");
-  // 失败时输出页面文本便于排查（上游偶发 50201/50203）。
-  page.on("requestfailed", function (r) { console.log("REQ FAIL:", r.url()); });
-  await page.getByRole("link", { name: "开始阅读" }).or(page.getByText("目录加载失败")).waitFor({ timeout: 30000 });
+  // 等目录加载出「开始阅读」或「目录加载失败」（上游偶发 50201/50203）。
+  await page
+    .getByRole("link", { name: "开始阅读" })
+    .or(page.getByText("目录加载失败"))
+    .waitFor({ timeout: 30000 });
   // 开始阅读 → 正文页。
   await page.getByRole("link", { name: "开始阅读" }).click();
   await page.waitForURL(/\/read\/\d+/, { timeout: 20000 });
-  await page.waitForSelector(".prose p", { timeout: 20000 });
+  await page.waitForSelector(".prose", { timeout: 20000 });
+  await page.waitForFunction(function () { var p = document.querySelector(".prose"); return p && p.innerText.length > 0; });
   // 正文有实际内容且落在页面上。
   const text = await page.locator(".prose").innerText();
   expect(text.length).toBeGreaterThan(100);
   // 标题同步为「章节名 - 书名」。
   await expect(page).toHaveTitle(/.+ - .+/);
+});
+
+// R4 核心交互：顶栏底栏自动隐藏（断言 1-6）。
+// 前置：所选章节内容必须超过一屏（scrollHeight > innerHeight），
+// 否则第 2 步根本滚不动，测试会假通过。
+// 断言用 evaluate 读 classList（Playwright toHaveClass 的自动重试
+// 与 React 状态更新交互不稳定，evaluate 一次性读取更可靠）。
+test("顶栏底栏自动隐藏", async ({ page }) => {
+  test.setTimeout(30000);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/books/7526452300462705689/read/7173216089122439711");
+  await page.waitForSelector(".prose", { timeout: 20000 });
+  await page.waitForTimeout(500);
+  const sh = await page.evaluate("document.documentElement.scrollHeight");
+  expect(sh).toBeGreaterThan(800);
+
+  // 单次 evaluate 内完成「滚动 → 等 rAF → 读 class」，无竞态。
+  const step = function (y: number) {
+    return page.evaluate(function (t) {
+      return new Promise(function (resolve) {
+        window.scrollTo(0, t);
+        setTimeout(function () {
+          resolve(document.querySelector(".topbar").className);
+        }, 300);
+      });
+    }, y);
+  };
+
+  // 1. 初始可见。
+  const c0 = await step(0);
+  expect(c0).not.toContain("hidden");
+
+  // 2. 向下滚 → hidden。
+  const c1 = await step(400);
+  expect(c1).toContain("hidden");
+
+  // 3. 向上滚 → visible。
+  const c2 = await step(200);
+  expect(c2).not.toContain("hidden");
+
+  // 4. 到顶 → visible。
+  const c3 = await step(0);
+  expect(c3).not.toContain("hidden");
+
+  // 5. 到底 → bottombar visible。
+  const c4 = await page.evaluate(function () {
+    return new Promise(function (resolve) {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      setTimeout(function () {
+        resolve(document.querySelector(".bottombar").className);
+      }, 300);
+    });
+  });
+  expect(c4).not.toContain("hidden");
+
+  // 6. 点正文翻转（双向）。从底部滚回 400 是向上滚，先确认可见；
+  // 用视口固定坐标点击，不引发滚动，翻转结果才确定。
+  const before = await step(400);
+  expect(before).not.toContain("hidden");
+  await page.mouse.click(640, 300);
+  await page.waitForTimeout(300);
+  const after = await page.evaluate("document.querySelector('.topbar').className");
+  expect(after).toContain("hidden");
+  // 再点一次翻回显示。
+  await page.mouse.click(640, 300);
+  await page.waitForTimeout(300);
+  const back = await page.evaluate("document.querySelector('.topbar').className");
+  expect(back).toBe(before);
 });

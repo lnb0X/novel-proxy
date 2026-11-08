@@ -4,7 +4,7 @@
 
 ## v0.3 阅读端
 
-- [ ] R1 阅读端骨架
+- [x] R1 阅读端骨架
       新建 web-reader/：Vite + React + TS，纯 CSS，不装任何组件库
       三条路由：/、/books/:bookId、/books/:bookId/read/:chapterId
       CSS 变量层（唯一配色与字号来源）：

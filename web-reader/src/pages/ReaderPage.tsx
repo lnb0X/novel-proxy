@@ -78,7 +78,7 @@ export function ReaderPage() {
 
   // 菜单显隐状态机（自动隐藏 + 点击正文切换并存）。
   const [menuVisible, setMenuVisible] = useState(true);
-  useMenuAutoHide(menuVisible, setMenuVisible);
+  useMenuAutoHide(setMenuVisible);
 
   // 图片 onerror 隐藏：事件委托。
   useEffect(() => {
@@ -91,7 +91,7 @@ export function ReaderPage() {
   }, []);
 
   return (
-    <div className="page reader-body" onClick={toggleOnBodyClick()}>
+    <div className="page reader-body" onClick={toggleOnBodyClick(setMenuVisible)}>
       <header className={"topbar" + (menuVisible ? "" : " hidden")}>
         <nav className="topbar-inner">
           <Link className="btn" to={"/books/" + bookId + (idx >= 0 ? "?toc=" + (Math.floor(idx / 200) + 1) + "&chapter=" + chapterId : "")}>
@@ -145,23 +145,19 @@ export function ReaderPage() {
   );
 }
 
-function toggleOnBodyClick() {
+function toggleOnBodyClick(setVisible: React.Dispatch<React.SetStateAction<boolean>>) {
   return (e: React.MouseEvent) => {
     const t = e.target as HTMLElement;
     // 点击顶栏底栏或设置面板不切换。
     if (t.closest(".topbar") || t.closest(".bottombar")) return;
-    toggleRequested = true;
+    setVisible((v) => !v);
   };
 }
 
-// 点击正文切换菜单显隐：与自动隐藏并存，由 useMenuAutoHide 的
-// rAF 循环消费 toggleRequested 标记。
-let toggleRequested = false;
-
 // useMenuAutoHide 滚动自动隐藏：passive + rAF 节流。
 // 规则：scrollY <= 8 或距底 <= 8 强制显示；向下滚超 8px 隐藏；
-// 向上滚超 8px 显示；点击正文切换与自动隐藏并存。
-function useMenuAutoHide(visible: boolean, setVisible: (v: boolean) => void) {
+// 向上滚超 8px 显示。点击正文直接翻转状态，与此并存。
+function useMenuAutoHide(setVisible: (v: boolean) => void) {
   const lastY = useRef(0);
   const ticking = useRef(false);
 
@@ -174,12 +170,6 @@ function useMenuAutoHide(visible: boolean, setVisible: (v: boolean) => void) {
         const y = window.scrollY;
         const distToBottom =
           document.documentElement.scrollHeight - window.innerHeight - y;
-        if (toggleRequested) {
-          toggleRequested = false;
-          setVisible(!visibleRef.current);
-          lastY.current = y;
-          return;
-        }
         if (y <= 8 || distToBottom <= 8) {
           setVisible(true);
         } else if (y > lastY.current + 8) {
@@ -193,13 +183,6 @@ function useMenuAutoHide(visible: boolean, setVisible: (v: boolean) => void) {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, [setVisible]);
-
-  // visibleRef 同步最新 visible，供 scroll 回调读取。
-  const visibleRef = useRef(visible);
-  useEffect(() => {
-    visibleRef.current = visible;
-  }, [visible]);
-  void setVisible;
 }
 
 // ChapterHtml 渲染后端白名单过滤后的 HTML。
