@@ -19,6 +19,8 @@ internal/stats/                 — 请求统计
 internal/audit/                 — 审计日志
 internal/frontend/              — 前端版本管理
 web/                            — 管理端 Vite 应用
+web-init/                       — 初始化前端 Vite 应用
+web-reader/                     — 阅读端前端 Vite 应用
 
 ## 构建
 CGO_ENABLED=0，-trimpath -ldflags="-s -w"，输出 bin/app.exe。
@@ -181,7 +183,7 @@ ttl_left_seconds 恒为 0（W14 裁决）。
 命中缓存返回纯文字，未命中返回带图 HTML，同一章两次看不同，这是刻意取舍。
 
 ## 静态服务与前端版本
-- 版本目录：data/frontends/<app>/<version>/，app 取 reader 或 admin
+- 版本目录：data/frontends/<app>/<version>/，app 取 reader / admin / init
 - 兜底目录：data/frontends/<app>/default/
 - 指针文件：data/frontends/<app>-current.json，内容 {"version": "..."}
 - 解析顺序：-static 参数 > 指针文件 > default/ > 返回 404
@@ -192,6 +194,15 @@ ttl_left_seconds 恒为 0（W14 裁决）。
 - 切换管理端后 10 秒内未确认则自动回滚到上一版本
 - 回滚点记在 data/frontends/<app>-previous.json
 - 恢复手段：删除 data/frontends/admin-current.json 并重启，回落到 previous
+
+## 前端应用（三个，各自独立）
+- web/          管理端：React + AntD + Hash 路由，base './'
+- web-init/     初始化：React + AntD，base '/init/'
+- web-reader/   阅读端：React，纯 CSS，不使用任何组件库
+- 三者各自独立的 package.json 和 node_modules，不使用 workspaces
+- 构建产物不进 git
+- web-reader 参与 frontends 的上传流程（app 名 reader）
+- web-init 不参与，只能通过文件系统放到 data/frontends/init/ 更换
 
 ## init 页面
 - init 是 frontends 的第三个 app，复用同一套版本解析与目录约定；
@@ -257,6 +268,54 @@ ttl_left_seconds 恒为 0（W14 裁决）。
 /account
 /account/password
 /audit
+
+## 阅读端（v0.3）
+路由三条：
+  /                              搜索页
+  /books/:bookId                 详情 + 目录（合并，无独立目录页）
+  /books/:bookId/read/:chapterId 正文页
+
+数据：
+- 全部走 TanStack Query + 原生 fetch
+- 详情页并行请求 detail 与 catalog
+- 正文页并行请求 content 与 catalog（后者用于算上一章 / 下一章）
+- 上一章 / 下一章按 catalog 数组下标计算，后端不提供
+
+排版（CSS 变量，唯一配色与字号来源）：
+- 字号可选值：16 / 20 / 24 / 28 / 32
+- 行高 1.85，正文最大宽度 38em，段间距 0.8em，不做首行缩进
+- 主题三套：
+    day   bg #ffffff  fg #1a1a1a  muted #8a8a8a  line #e8e8e8
+    sepia bg #f5f0e6  fg #3a3226  muted #8a8172  line #e0d8c8
+    night bg #1a1a1a  fg #c8c8c8  muted #6a6a6a  line #2a2a2a
+- 字体两种：系统无衬线 / 系统衬线，不加载任何 webfont
+- 阅读设置的三项（字号、主题、字体）存 localStorage，键名前缀 reader.
+
+交互：
+- 顶栏底栏用 position:fixed + transform 隐藏，不用 display:none
+- 自动隐藏规则：scrollY <= 8 或距底 <= 8 时强制显示；
+  向下滚动超过 8px 隐藏；向上滚动超过 8px 显示
+- 点击正文区切换显示状态，与自动隐藏并存
+- 章节切换时 scrollTo(0,0)，且强制显示顶栏底栏
+- 滚动监听必须 passive + requestAnimationFrame 节流
+- 不做左右滑动翻章（与滚动冲突）
+- 桌面端：方向键左右翻章、空格下翻一屏
+- 正文上下内边距永久保留，菜单显隐不得引起重排
+- 底栏高度计入 env(safe-area-inset-bottom)
+
+行为：
+- 搜索的 q 与 page 同步到 URL
+- 目录每页 200 章，页码体现在 ?toc=N
+- 正文页「返回」固定跳 /books/:bookId，不用 history.back()
+- document.title 同步为「章节名 - 书名」
+- 章末字数由前端去掉标签后统计，不请求接口
+- 图片 onerror 时隐藏，不显示裂图占位
+- 详情页简介超过 5 行折叠
+- 上游失败与空结果必须显示不同文案
+
+部署：
+- 构建产物打 zip，通过管理端 /frontends 上传并激活
+- 首版放到 data/frontends/reader/default/ 作为出厂默认
 
 ## 明确不用
 Next.js / Nuxt / Tailwind / shadcn / MUI / Zustand / Redux / Axios /

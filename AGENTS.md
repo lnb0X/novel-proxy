@@ -3,7 +3,7 @@
 ## 项目
 自用小说中转站。Go 后端（gin + resty）代理上游接口，
 带初始化向导、JWT 认证、多数据库文章缓存、前端版本管理、管理端界面。
-v0.2 范围：管理端 + 基础设施。阅读端前端在 v0.3，本期不要碰。
+v0.3 范围：阅读端前端。后端已完成，本期不改任何 /api/* 契约。
 
 ## 环境
 Windows。所有命令必须是纯 go 调用，不要用 make、sed、awk。
@@ -116,7 +116,7 @@ commit message、变量名、测试数据里自己写的内容，一律禁止。
 
 ## 仓库卫生
 - .gitignore 至少忽略：bin/、logs/、*.exe、.env、tmp/、data/、
-  web/dist/、web/node_modules/、*.tsbuildinfo、tmp_*.log
+  web*/dist/、web*/node_modules/、*.tsbuildinfo、tmp_*.log
 - .gitattributes 内容为 * text=auto eol=lf
 - 不许提交：编译产物、日志、.env、tmp/、data/、node_modules
 - 仓库统一 LF 换行
@@ -159,11 +159,24 @@ commit message、变量名、测试数据里自己写的内容，一律禁止。
 - 未匹配路由：/api/* 返回 JSON 404，其余返回固定 HTML 404
 - 所有路径拼接用 filepath.Join；URL 路径清洗用 path.Clean
 
-## 前端约束（仅管理端）
-- 管理端放在 web/ 下，Vite + React + TypeScript，strict
-- 只在 src/admin/ 下 import AntD
-- Hash 路由，Vite base 用 './'
-- 禁止把 web/dist 提交进仓库
+## 前端约束
+
+三个独立应用：web/（管理端，AntD）、web-init/（初始化，AntD）、
+web-reader/（阅读端，纯 CSS）。
+
+通用：
+- 一律 Vite + React + TypeScript，strict 开启
+- 管理端和初始化用 Hash 路由；阅读端用 BrowserRouter（有 SPA 兜底）
+- 禁止把 dist、node_modules 提交进仓库
 - 一个路由只承载一个职责，不得用 Tab / Modal / Drawer 承载另一页内容
 - 视觉红线：主色不得用 indigo/violet；禁止渐变文字/按钮、玻璃拟态；
   禁止 emoji 当图标；圆角统一 6px
+
+阅读端额外：
+- 不引入任何组件库，不引入 Tailwind、CSS-in-JS、UI 框架
+- 样式只通过 web-reader/src/reader.css 里的 CSS 变量控制，
+  不得在组件里写死颜色、字号、间距
+- 正文直接落在页面背景上，禁止卡片/边框/投影/圆角容器包裹
+- 禁止背景渐变、纹理、装饰图形、翻页动画、淡入淡出
+- 禁止顶部悬浮导航遮挡正文
+- 行宽不得超过 38em

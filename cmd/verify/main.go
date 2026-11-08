@@ -23,6 +23,9 @@ var banned = []string{
 // 目前只有 -race 会用到（需要 CGO_ENABLED=1）。
 var extraEnv []string
 
+// frontDirs 参与类型检查与构建的前端目录。目录不存在则自动跳过。
+var frontDirs = []string{"web", "web-init", "web-reader"}
+
 func command(dir, name string, args ...string) *exec.Cmd {
 	c := exec.Command(name, args...)
 	if dir != "" {
@@ -101,17 +104,19 @@ func main() {
 		fail("直接依赖 %d 个，超过预算 15", direct)
 	}
 
-	if _, err := os.Stat("web/package.json"); err == nil {
-		if _, err := os.Stat("web/node_modules"); err != nil {
-			fail("web/node_modules 不存在，先在 web/ 下执行 npm install")
+	for _, dir := range frontDirs {
+		if _, err := os.Stat(filepath.Join(dir, "package.json")); err != nil {
+			continue
 		}
-		fmt.Println("==> 前端类型检查")
-		if err := runIn("web", "npx", "tsc", "--noEmit"); err != nil {
-			fail("前端类型检查未通过")
+		if _, err := os.Stat(filepath.Join(dir, "node_modules")); err != nil {
+			fail("%s/node_modules 不存在，先在该目录执行 npm install", dir)
 		}
-		fmt.Println("==> 前端构建")
-		if err := runIn("web", "npm", "run", "build"); err != nil {
-			fail("前端构建未通过")
+		fmt.Printf("==> 前端检查 %s\n", dir)
+		if err := runIn(dir, "npx", "tsc", "--noEmit"); err != nil {
+			fail("%s 类型检查未通过", dir)
+		}
+		if err := runIn(dir, "npm", "run", "build"); err != nil {
+			fail("%s 构建未通过", dir)
 		}
 	}
 
