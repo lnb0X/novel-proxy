@@ -58,6 +58,7 @@ export function AuditPage() {
       <Table
         size="small"
         rowKey={(r) => r.ts + r.event + r.detail}
+        scroll={{ x: "max-content" }}
         dataSource={data?.items ?? []}
         loading={!data}
         pagination={{

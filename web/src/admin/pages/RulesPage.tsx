@@ -155,7 +155,7 @@ export function RulesPage() {
 
   const bookEditor = (
     <Card title="按书配置" size="small" style={{ marginBottom: 12 }}>
-      <Space style={{ marginBottom: 12 }}>
+      <Space style={{ marginBottom: 12 }} wrap>
         <Input
           placeholder="book_id"
           value={bookKey}

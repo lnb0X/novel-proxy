@@ -1,0 +1,22 @@
+/* 全站 design token：间距、字号、圆角、控件尺寸、边框与文字色。
+   web 与 web-init 两份内容保持一致；禁止在 token 之外使用新的
+   间距值与字号值。 */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+  --space-6: 48px;
+  --font-xs: 12px;
+  --font-sm: 13px;
+  --font-md: 14px;
+  --font-lg: 18px;
+  --font-xl: 22px;
+  --radius: 6px;
+  --control-h: 36px;
+  --border: #e5e7eb;
+  --text-1: #1a1a1a;
+  --text-2: #666;
+  --text-3: #999;
+}

@@ -70,6 +70,7 @@ export function StatsPage() {
         <Table
           size="small"
           rowKey={(r) => String(r.time)}
+          scroll={{ x: "max-content" }}
           dataSource={q.buckets}
           pagination={false}
           columns={[
@@ -121,6 +122,7 @@ export function StatsPage() {
         <Table
           size="small"
           rowKey={(r) => r.trace_id + r.path}
+          scroll={{ x: "max-content" }}
           dataSource={ov.recent_errors}
           pagination={false}
           columns={[

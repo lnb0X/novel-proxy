@@ -125,6 +125,7 @@ export function FrontendsPage() {
         <Table
           size="small"
           rowKey={(r) => r.version}
+          scroll={{ x: "max-content" }}
           dataSource={a.versions}
           pagination={false}
           columns={[

@@ -21,10 +21,13 @@ import {
 } from "./pages/account-config";
 
 // 视觉约束见 AGENTS.md：主色不用 indigo/violet，圆角统一 6px。
+// 控件高度与字号对齐 styles/tokens.css（--control-h / --font-md）。
 const theme = {
   token: {
     colorPrimary: "#1677ff",
     borderRadius: 6,
+    controlHeight: 36,
+    fontSize: 14,
   },
 };
 

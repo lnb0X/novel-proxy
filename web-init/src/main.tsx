@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import "./tokens.css";
 import "./wizard.css";
 
 // 四步向导：1 令牌、2 账号、3 缓存、4 确认。
