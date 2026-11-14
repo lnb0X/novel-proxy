@@ -79,7 +79,7 @@ func Open(driver, dsn string) (ArticleStore, error) {
 		if err != nil {
 			return nil, fmt.Errorf("连接 mongo: %w", err)
 		}
-		return NewMongoStore(mc.Database(mongoDBName(dsn)).Collection("articles")), nil
+		return NewMongoStore(mc.Database(mongoDBName(dsn)).Collection("articles"), mc), nil
 	default:
 		return nil, fmt.Errorf("存储驱动 %s 尚未实现", driver)
 	}
@@ -96,6 +96,12 @@ func (s *sqlStore) Init(ctx context.Context) error {
 
 func (s *sqlStore) Ping(ctx context.Context) error {
 	return s.db.PingContext(ctx)
+}
+
+// Close 关闭底层连接池。不在 ArticleStore 接口里（接口已冻结），
+// confirm 阶段建了库却没人接管时（钩子失败 / 测试场景）做可选断言释放。
+func (s *sqlStore) Close() error {
+	return s.db.Close()
 }
 
 func (s *sqlStore) Get(ctx context.Context, bookID, itemID string) (*Article, error) {

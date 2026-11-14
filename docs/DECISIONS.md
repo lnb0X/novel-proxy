@@ -220,6 +220,11 @@ ttl_left_seconds 恒为 0（W14 裁决）。
 - data/frontends/init/ 不进 git，每个部署环境自己放一次，写进部署说明
 - 管理端的上传/切换接口仍然只接受 reader 和 admin；init 只能通过
   文件系统更换，不走 web
+- database/test 只测连通（Ping），不建表；建表只发生在 confirm，
+  且 Init 成功才写 instance.yaml。confirm 失败返回 40001（连接失败 /
+  数据库初始化失败），无任何磁盘写入
+- 登录失败审计区分 no_such_user / password_mismatch，只进日志，
+  对外仍统一「账号或密码错误」
 
 ## init 热挂载
 - confirm 成功后整体替换 handler：main 的 buildEngine(cfg, deps) 产出

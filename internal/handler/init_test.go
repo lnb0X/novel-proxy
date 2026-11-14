@@ -204,7 +204,7 @@ func TestInitConfirmHotSwapHook(t *testing.T) {
 
 	// 钩子失败：配置回滚、50001、令牌文件保留、可重新 confirm。
 	var calls int
-	w.SetOnConfirm(func() error {
+	w.SetOnConfirm(func(*PreparedStorage) error {
 		calls++
 		return errors.New("模拟热挂载失败")
 	})
@@ -222,7 +222,7 @@ func TestInitConfirmHotSwapHook(t *testing.T) {
 		t.Fatalf("钩子失败后令牌文件应保留: %v", err)
 	}
 	// 向导仍可用：换成功钩子重新 confirm。
-	w.SetOnConfirm(func() error { return nil })
+	w.SetOnConfirm(func(*PreparedStorage) error { return nil })
 	resp = postInit(r, "/init/api/confirm", "", session)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("重试 confirm 应成功: %d %s", resp.Code, resp.Body.String())
@@ -233,5 +233,55 @@ func TestInitConfirmHotSwapHook(t *testing.T) {
 	// instance.yaml 已写盘。
 	if _, err := os.Stat(instancePath); err != nil {
 		t.Fatalf("instance.yaml 应存在: %v", err)
+	}
+}
+
+// confirm 阶段存储不可用：先建库失败，返回 40001 + 原因，
+// 不产生任何磁盘写入（instance.yaml 不存在）。
+// 127.0.0.1:1 端口连接被拒，断网与沙箱环境下行为一致。
+func TestInitConfirmStorageFailNoWrite(t *testing.T) {
+	r, w, _, _, instancePath := newInitEnv(t, false)
+	session, _ := getToken(t, r, w)
+
+	for _, step := range []struct {
+		path string
+		body string
+	}{
+		{"/init/api/account", `{"username":"boss","password":"Abcdef1!Abcde","admin_path":"adm"}`},
+		{"/init/api/storage", `{"enabled":true}`},
+		{"/init/api/database", `{"driver":"postgres","dsn":"postgres://u:p@127.0.0.1:1/db?sslmode=disable&connect_timeout=1"}`},
+	} {
+		resp := postInit(r, step.path, step.body, session)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("%s = %d %s", step.path, resp.Code, resp.Body.String())
+		}
+	}
+	resp := postInit(r, "/init/api/confirm", "", session)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("存储失败应 40001: %d %s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "连接失败") {
+		t.Fatalf("应写明连接失败原因: %s", resp.Body.String())
+	}
+	if _, err := os.Stat(instancePath); !os.IsNotExist(err) {
+		t.Fatalf("confirm 失败不应写 instance.yaml: %v", err)
+	}
+}
+
+// database/test 只做连通性检查：连不上的库返回 ok=false，
+// 连得上的库（sqlite 内存）返回 ok=true，全程不建表。
+func TestInitDatabaseTestPingOnly(t *testing.T) {
+	r, w, _, _, _ := newInitEnv(t, false)
+	session, _ := getToken(t, r, w)
+	resp := postInit(r, "/init/api/database/test", `{"driver":"postgres","dsn":"postgres://u:p@127.0.0.1:1/db?sslmode=disable&connect_timeout=1"}`, session)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("test 应 200 封装: %d %s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"ok":false`) {
+		t.Fatalf("不可达库应 ok=false: %s", resp.Body.String())
+	}
+	resp = postInit(r, "/init/api/database/test", `{"driver":"sqlite","dsn":":memory:"}`, session)
+	if !strings.Contains(resp.Body.String(), `"ok":true`) {
+		t.Fatalf("sqlite 内存库应 ok=true: %s", resp.Body.String())
 	}
 }

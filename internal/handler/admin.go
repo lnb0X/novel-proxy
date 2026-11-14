@@ -36,7 +36,14 @@ func Login(auth *middleware.AuthManager, cfg *config.Config, au *stats.Stats) gi
 			api.Fail(c, api.CodeTooManyRequests, "登录尝试过于频繁")
 			return
 		}
-		if body.Username != cfg.Admin.Username || !middleware.CheckPassword(cfg.Admin.PasswordHash, body.Password) {
+		// 原因只进审计日志：无此用户与密码错误区分开，对外统一文案。
+		if body.Username != cfg.Admin.Username {
+			auth.LoginFailure(ip, body.Username)
+			au.Audit("login_fail", body.Username, ip, c.Request.UserAgent(), "no_such_user", "fail")
+			api.Fail(c, api.CodeUnauthorized, "账号或密码错误")
+			return
+		}
+		if !middleware.CheckPassword(cfg.Admin.PasswordHash, body.Password) {
 			auth.LoginFailure(ip, body.Username)
 			au.Audit("login_fail", body.Username, ip, c.Request.UserAgent(), "password_mismatch", "fail")
 			api.Fail(c, api.CodeUnauthorized, "账号或密码错误")

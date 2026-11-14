@@ -15,12 +15,24 @@ import (
 // mongoStore ArticleStore 的 MongoDB 实现。
 // collection articles：唯一索引 {item_id}，普通索引 {book_id}。
 type mongoStore struct {
-	coll *mongo.Collection
+	coll   *mongo.Collection
+	client *mongo.Client
 }
 
-// NewMongoStore 用现成的 *mongo.Collection 构建存储。
-func NewMongoStore(coll *mongo.Collection) *mongoStore {
-	return &mongoStore{coll: coll}
+// NewMongoStore 用现成的 *mongo.Collection 与 client 构建存储。
+func NewMongoStore(coll *mongo.Collection, client *mongo.Client) *mongoStore {
+	return &mongoStore{coll: coll, client: client}
+}
+
+// Close 断开底层 client。不在 ArticleStore 接口里（接口已冻结），
+// confirm 阶段建了库却没人接管时做可选断言释放。
+func (m *mongoStore) Close() error {
+	if m.client == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	return m.client.Disconnect(ctx)
 }
 
 const mongoTimeout = 10 * time.Second

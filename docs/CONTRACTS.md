@@ -120,8 +120,11 @@ POST /init/api/account            body { username, password, admin_path }
 POST /init/api/storage            body { enabled }
 POST /init/api/database/test      body { driver, dsn }
   → { ok: bool, message: string }
+  只做连通性检查（Ping），不建表。建表发生在 /init/api/confirm。
 POST /init/api/database           body { driver, dsn }
 POST /init/api/confirm            → 写盘，返回 { admin_path }
+  存储不可用时 confirm 先返回 40001（连接失败 / 数据库初始化失败），
+  此时无任何磁盘写入；写盘成功即返回 200。
 POST /init/api/cancel             → 清空内存草稿
 
 所有步骤状态存在服务端内存，按 init_session 关联。

@@ -34,14 +34,16 @@ const (
 
 // serverDeps buildEngine 的共享依赖：跨 engine 存活的对象与路径。
 // onConfirm 由 main 注入，init confirm 写盘并更新内存配置之后调用，
-// 完成 storage 连接与 engine 热挂载。
+// 用 Confirm 阶段建好的存储连接（prepared）完成 engine 热挂载。
 type serverDeps struct {
 	lg           *logx.Log
 	instancePath string
 	staticDir    string
 	frontends    *frontend.Manager
 	startedAt    time.Time
-	onConfirm    func() error
+	onConfirm    func(*handler.PreparedStorage) error
+	// prepared 由 confirm 钩子写入、buildEngine 消费一次。
+	prepared *handler.PreparedStorage
 	// FrontendDir 由 buildEngine 写入，main 的启动日志读取。
 	FrontendDir string
 }
@@ -60,10 +62,16 @@ func buildEngine(cfg *config.Config, deps *serverDeps) (*gin.Engine, func(), err
 
 	// 统计钩子：紧随 trace_id，包裹全部后续中间件（含 recover，panic 也记录）。
 	// 与文章缓存同库；storage 未启用时为 nil，三组统计接口返回 50301。
+	// confirm 热挂载时 storage 已在写盘前建好（deps.prepared），直接挂用。
 	var statStore *stats.Stats
 	var counters *store.CountingStore
 	var articleStore store.ArticleStore
-	if cfg.Storage.Enabled {
+	if deps.prepared != nil {
+		statStore = deps.prepared.StatStore
+		counters = deps.prepared.Counters
+		articleStore = deps.prepared.ArticleStore
+		deps.prepared = nil
+	} else if cfg.Storage.Enabled {
 		ss, serr := stats.New(cfg.Storage.Driver, cfg.Storage.DSN, deps.lg.Logger)
 		if serr != nil {
 			return nil, nil, fmt.Errorf("初始化统计失败: %w", serr)
@@ -272,7 +280,8 @@ func main() {
 		return f
 	}
 
-	deps.onConfirm = func() error {
+	deps.onConfirm = func(p *handler.PreparedStorage) error {
+		deps.prepared = p
 		h, stop, err := buildEngine(&cfg, deps)
 		if err != nil {
 			return err

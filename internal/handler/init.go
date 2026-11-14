@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -20,6 +22,7 @@ import (
 	"novel-proxy/internal/api"
 	"novel-proxy/internal/config"
 	"novel-proxy/internal/middleware"
+	"novel-proxy/internal/stats"
 	"novel-proxy/internal/store"
 )
 
@@ -60,7 +63,8 @@ type InitWizard struct {
 	ipLocks      map[string]time.Time
 	cfg          *config.Config
 	instancePath string
-	onConfirm    func() error
+	onConfirm    func(*PreparedStorage) error
+	lg           *slog.Logger
 }
 
 // NewInitWizard 启动时调用。未初始化状态下确保令牌存在（复用或新生成
@@ -72,6 +76,7 @@ func NewInitWizard(cfg *config.Config, instancePath, dataDir string, lg *slog.Lo
 		ipLocks:      map[string]time.Time{},
 		cfg:          cfg,
 		instancePath: instancePath,
+		lg:           lg,
 	}
 	if cfg.Setup.Completed {
 		return w
@@ -97,10 +102,10 @@ func NewInitWizard(cfg *config.Config, instancePath, dataDir string, lg *slog.Lo
 }
 
 // SetOnConfirm 注入 confirm 热挂载钩子：instance.yaml 写盘、内存配置
-// 更新之后调用（连接 storage、重建 engine 并整体替换）。钩子失败时
-// Confirm 回滚内存配置并向导返回 50001，此时向导仍可用，可修正后
-// 重新 confirm。
-func (w *InitWizard) SetOnConfirm(fn func() error) {
+// 更新之后调用（用 Confirm 阶段建好的存储连接重建 engine 并整体替换）。
+// 钩子失败时 Confirm 回滚内存配置并向导返回 50001，此时向导仍可用，
+// 可修正后重新 confirm。
+func (w *InitWizard) SetOnConfirm(fn func(*PreparedStorage) error) {
 	w.mu.Lock()
 	w.onConfirm = fn
 	w.mu.Unlock()
@@ -281,6 +286,7 @@ func (w *InitWizard) Storage() gin.HandlerFunc {
 }
 
 // DatabaseTest POST /init/api/database/test body { driver, dsn } → { ok, message }
+// 只做连通性检查（Ping），不建表；建表发生在 confirm。
 func (w *InitWizard) DatabaseTest() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body struct {
@@ -293,11 +299,6 @@ func (w *InitWizard) DatabaseTest() gin.HandlerFunc {
 		}
 		st, err := store.Open(body.Driver, body.DSN)
 		if err != nil {
-			api.OK(c, gin.H{"ok": false, "message": err.Error()})
-			return
-		}
-		defer func() { _ = st.Ping(c.Request.Context()) }()
-		if err := st.Init(c.Request.Context()); err != nil {
 			api.OK(c, gin.H{"ok": false, "message": err.Error()})
 			return
 		}
@@ -336,9 +337,61 @@ func (w *InitWizard) Database() gin.HandlerFunc {
 	}
 }
 
-// Confirm POST /init/api/confirm：账号必填；一次性写 instance.yaml，
-// 内存配置同步生效并触发热挂载（连接 storage、整体替换 engine，
-// 不重启进程）。热挂载失败时回滚内存配置返回 50001，向导保持可用。
+// PreparedStorage confirm 阶段提前建好的存储连接组：Init 成功后交给
+// onConfirm 挂进新 engine，避免盘写完才发现库不可用。
+type PreparedStorage struct {
+	StatStore    *stats.Stats
+	Counters     *store.CountingStore
+	ArticleStore store.ArticleStore
+}
+
+// releaseStorage 释放连接组。ArticleStore 接口没有 Close（接口已冻结），
+// 对实现了 Close 的具体类型做可选断言。
+func releaseStorage(p *PreparedStorage) {
+	if p == nil {
+		return
+	}
+	if c, ok := p.ArticleStore.(interface{ Close() error }); ok {
+		_ = c.Close()
+	}
+	if p.StatStore != nil {
+		p.StatStore.Close()
+	}
+}
+
+// prepareStorage 连接存储并建表。连接层失败（Open / Ping / 统计连接）
+// 报「连接失败」，建表失败（Init）报「数据库初始化失败」。
+// Ping 必须先于 Init：pgx 等驱动是惰性连接，死主机要等第一条语句才
+// 报错，先 Ping 才能把「连不上」和「没权限建表」分开。
+// 失败路径上已打开的连接全部释放（具体类型实现了可选 Close）。
+func (w *InitWizard) prepareStorage(ctx context.Context, driver, dsn string) (*PreparedStorage, error) {
+	st, err := store.Open(driver, dsn)
+	if err != nil {
+		return nil, errors.New("连接失败：" + err.Error())
+	}
+	fail := func(msg string) (*PreparedStorage, error) {
+		if c, ok := st.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+		return nil, errors.New(msg)
+	}
+	if err := st.Ping(ctx); err != nil {
+		return fail("连接失败：" + err.Error())
+	}
+	if err := st.Init(ctx); err != nil {
+		return fail("数据库初始化失败：" + err.Error())
+	}
+	ss, serr := stats.New(driver, dsn, w.lg)
+	if serr != nil {
+		return fail("连接失败：" + serr.Error())
+	}
+	return &PreparedStorage{StatStore: ss, Counters: store.Count(st), ArticleStore: st}, nil
+}
+
+// Confirm POST /init/api/confirm：账号必填；先连接存储并建表，成功才写
+// instance.yaml，随后内存配置同步生效并触发热挂载（整体替换 engine，
+// 不重启进程）。存储失败返回 40001 不写盘，前端停在确认页可回去改；
+// 热挂载失败回滚内存配置返回 50001，向导保持可用。
 func (w *InitWizard) Confirm() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		w.mu.Lock()
@@ -354,6 +407,17 @@ func (w *InitWizard) Confirm() gin.HandlerFunc {
 			failInternal(c, err)
 			return
 		}
+
+		// 先建库建表，成功才写盘。失败保持 40001，不产生任何磁盘写入。
+		var prepared *PreparedStorage
+		if d.storageOn {
+			prepared, err = w.prepareStorage(c.Request.Context(), d.driver, d.dsn)
+			if err != nil {
+				api.Fail(c, api.CodeBadRequest, err.Error())
+				return
+			}
+		}
+
 		err = config.UpdateInstance(w.instancePath, func(doc *yaml.Node) error {
 			steps := []struct {
 				path []string
@@ -391,7 +455,7 @@ func (w *InitWizard) Confirm() gin.HandlerFunc {
 		w.cfg.Storage.Driver = d.driver
 		w.cfg.Storage.DSN = d.dsn
 		if onConfirm != nil {
-			if err := onConfirm(); err != nil {
+			if err := onConfirm(prepared); err != nil {
 				w.cfg.Setup.Completed = oldSetup
 				w.cfg.Admin.Username = oldUser
 				w.cfg.Admin.PasswordHash = oldHash
@@ -399,9 +463,14 @@ func (w *InitWizard) Confirm() gin.HandlerFunc {
 				w.cfg.Storage.Enabled = oldEnabled
 				w.cfg.Storage.Driver = oldDriver
 				w.cfg.Storage.DSN = oldDSN
+				// 钩子失败，没有 engine 接管这份连接，释放。
+				releaseStorage(prepared)
 				failInternal(c, err)
 				return
 			}
+		} else {
+			// 无钩子（测试场景）：没有任何 engine 会接管，直接释放。
+			releaseStorage(prepared)
 		}
 
 		_ = os.Remove(filepath.Join(filepath.Dir(w.instancePath), initTokenFile))
