@@ -94,18 +94,19 @@ export function ReaderPage() {
     <div className="page reader-body" onClick={toggleOnBodyClick(setMenuVisible)}>
       <div className="page-container">
         <header className={"topbar" + (menuVisible ? "" : " hidden")}>
-        <nav className="topbar-inner">
-          <Link className="btn" to={"/books/" + bookId + (idx >= 0 ? "?toc=" + (Math.floor(idx / 200) + 1) + "&chapter=" + chapterId : "")}>
-            返回
-          </Link>
-          <span className="topbar-title">
-            {contentData ? contentData.title : ""}
-          </span>
-          <span className="topbar-spacer" />
-        </nav>
-      </header>
+          <nav className="topbar-inner">
+            <Link className="btn" to={"/books/" + bookId + (idx >= 0 ? "?toc=" + (Math.floor(idx / 200) + 1) + "&chapter=" + chapterId : "")}>
+              返回
+            </Link>
+            <span className="topbar-title">
+              {contentData ? contentData.title : ""}
+            </span>
+            <span className="topbar-spacer" />
+          </nav>
+        </header>
 
-      <div className="prose" data-chapter={chapterId}>
+        {contentData ? <h1 className="chapter-title">{contentData.title}</h1> : null}
+        <div className="prose" data-chapter={chapterId}>
         {content.isPending ? (
           <Skeleton rows={10} title />
         ) : content.isError ? (
@@ -116,9 +117,10 @@ export function ReaderPage() {
         {content.isSuccess ? (
           <ChapterEnd
             wordCount={plainTextLength(content.data.content)}
-            nextChapterId={next ? next.chapter_id : ""}
             bookId={bookId}
-            nextTitle={next ? next.title : ""}
+            prevChapterId={prev ? prev.chapter_id : ""}
+            nextChapterId={next ? next.chapter_id : ""}
+            tocPage={idx >= 0 ? Math.floor(idx / 200) + 1 : 1}
           />
         ) : null}
       </div>
@@ -132,6 +134,12 @@ export function ReaderPage() {
           ) : (
             <span className="btn disabled">上一章</span>
           )}
+          <Link
+            className="btn"
+            to={"/books/" + bookId + (idx >= 0 ? "?toc=" + (Math.floor(idx / 200) + 1) + "&chapter=" + chapterId : "")}
+          >
+            目录
+          </Link>
           <SettingsPanel settings={settings.settings} setFontSize={settings.setFontSize} setTheme={settings.setTheme} setFont={settings.setFont} />
           {next ? (
             <Link className="btn" to={"/books/" + bookId + "/read/" + next.chapter_id}>
@@ -192,25 +200,38 @@ function ChapterHtml(props: { html: string }) {
   return <div dangerouslySetInnerHTML={{ __html: props.html }} />;
 }
 
-// ChapterEnd 章末：字数（去标签统计）+ 本章完 + 下一章。
+// ChapterEnd 章末：字数（去标签统计）+ 本章完 + 上一章 / 目录 / 下一章。
 function ChapterEnd(props: {
   wordCount: number;
-  nextChapterId: string;
   bookId: string;
-  nextTitle: string;
+  prevChapterId: string;
+  nextChapterId: string;
+  tocPage: number;
 }) {
   return (
     <div className="chapter-end">
       <hr className="hr" />
       <p className="muted">本章字数：{props.wordCount}</p>
       <p className="muted chapter-end-mark">本章完</p>
-      {props.nextChapterId ? (
-        <Link className="btn" to={"/books/" + props.bookId + "/read/" + props.nextChapterId}>
-          下一章：{props.nextTitle}
+      <div className="chapter-end-actions">
+        {props.prevChapterId ? (
+          <Link className="btn" to={"/books/" + props.bookId + "/read/" + props.prevChapterId}>
+            上一章
+          </Link>
+        ) : (
+          <span className="btn disabled">上一章</span>
+        )}
+        <Link className="btn" to={"/books/" + props.bookId + "?toc=" + props.tocPage}>
+          目录
         </Link>
-      ) : (
-        <p className="muted">已是最新章节</p>
-      )}
+        {props.nextChapterId ? (
+          <Link className="btn" to={"/books/" + props.bookId + "/read/" + props.nextChapterId}>
+            下一章
+          </Link>
+        ) : (
+          <span className="btn disabled">下一章</span>
+        )}
+      </div>
     </div>
   );
 }

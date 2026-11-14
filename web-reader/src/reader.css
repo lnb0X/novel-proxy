@@ -91,6 +91,12 @@ a {
   padding: 0;
 }
 
+/* 正文顶部章节标题（参考起点 / 番茄：标题在正文上方） */
+.chapter-title {
+  font-size: var(--font-lg);
+  margin: 0 0 var(--space-4);
+}
+
 /* 正文排版：行高 1.85，列宽 38em（随字号缩放），段间距 0.8em，无首行缩进 */
 .prose {
   max-width: var(--reader-max-width);
@@ -345,18 +351,21 @@ h1.page-title {
   margin: 0 0 var(--space-5);
 }
 
-/* 目录：卷头、章节行、分页器同一条左边线；章节行高 40px 垂直居中 */
+/* 目录：多列网格（参考起点目录），卷头跨全部列；章节行 40px 垂直居中 */
 .toc {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0 var(--space-4);
 }
 
 .toc li {
   min-height: 40px;
-  display: grid;
-  grid-template-columns: 3.5em 1fr;
+  display: flex;
   align-items: center;
+  gap: var(--space-2);
   border-bottom: 1px solid var(--line);
 }
 
@@ -367,12 +376,16 @@ h1.page-title {
 .toc-num {
   color: var(--muted);
   font-size: var(--font-xs);
+  flex: none;
+  min-width: 3em;
   text-align: right;
-  padding-right: var(--space-2);
 }
 
 .toc li a {
-  grid-column: 2;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 当前章：加粗 + 左侧 2px 主色竖线（inset 不挤动布局） */
@@ -384,10 +397,31 @@ h1.page-title {
   font-weight: bold;
 }
 
-.toc .volume-head {
+.toc .volume-row {
   grid-column: 1 / -1;
-  margin: var(--space-2) 0 var(--space-1);
+  margin-top: var(--space-3);
+}
+
+.toc .volume-head {
+  margin: var(--space-1) 0;
   font-weight: bold;
+}
+
+/* 目录标题行：标题居左，正序 / 倒序文字按钮居右 */
+.toc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.toc-sort {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-family: inherit;
+  font-size: var(--font-sm);
+  padding: 0;
+  cursor: pointer;
 }
 
 .toc-pager {
@@ -476,7 +510,14 @@ h1.page-title {
   font-weight: bold;
 }
 
-/* 章末 */
+/* 章末：按钮行居中（参考起点 / 番茄的上一章 / 目录 / 下一章） */
 .chapter-end {
   margin-top: 2em;
+}
+
+.chapter-end-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-3);
+  margin: var(--space-4) 0 var(--space-2);
 }

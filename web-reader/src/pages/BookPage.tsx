@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getBookDetail, getCatalog, type Catalog } from "../api";
@@ -10,8 +10,20 @@ const PAGE_SIZE = 200;
 // 并行请求 detail 与 catalog（DECISIONS：详情页并行请求）。
 export function BookPage() {
   const { bookId = "" } = useParams();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const toc = Math.max(1, Number(params.get("toc") ?? "1") || 1);
+  const rev = params.get("rev") === "1";
+  // 倒序切换：回到目录第 1 页，保留当前章高亮。
+  const toggleRev = () => {
+    const next = new URLSearchParams(params);
+    if (rev) {
+      next.delete("rev");
+    } else {
+      next.set("rev", "1");
+    }
+    next.set("toc", "1");
+    setParams(next);
+  };
 
   const [introOpen, setIntroOpen] = useState(false);
   const detail = useQuery({
@@ -87,7 +99,12 @@ export function BookPage() {
           </Link>
         </p>
         <hr className="hr" />
-        <h2 className="page-title">目录（{cat.total} 章）</h2>
+        <div className="toc-head">
+          <h2 className="page-title">目录（{cat.total} 章）</h2>
+          <button className="toc-sort" type="button" onClick={toggleRev}>
+            {rev ? "正序" : "倒序"}
+          </button>
+        </div>
         {cat.chapters.length === 0 ? (
           <p className="muted">暂无目录</p>
         ) : (
@@ -97,6 +114,7 @@ export function BookPage() {
             totalPages={totalPages}
             bookId={bookId}
             chapterId={chapterId}
+            rev={rev}
           />
         )}
       </div>
@@ -135,27 +153,52 @@ function TopNav() {
   );
 }
 
-// TocList：每页 200 章；跨页的卷头显示「（续）」；当前章高亮。
+// TocList：每页 200 章；多列网格（参考起点目录），卷头跨全部列；
+// 倒序（?rev=1）时序号仍显示真实章节号；当前章高亮。
 function TocList(props: {
   cat: Catalog;
   toc: number;
   totalPages: number;
   bookId: string;
   chapterId: string;
+  rev: boolean;
 }) {
-  const { cat, toc, totalPages, bookId, chapterId } = props;
+  const { cat, toc, totalPages, bookId, chapterId, rev } = props;
   const page = Math.min(toc, totalPages);
   const start = (page - 1) * PAGE_SIZE;
-  const rows = cat.chapters.slice(start, start + PAGE_SIZE);
+  const list = rev ? [...cat.chapters].reverse() : cat.chapters;
+  const rows = list.slice(start, start + PAGE_SIZE);
+
+  // 章节号按正序全书编号，倒序展示时仍然显示真实序号。
+  const ordinals = new Map(cat.chapters.map((c, i) => [c.chapter_id, i + 1]));
 
   const seenVolumes = new Set<string>();
-  const rowsWithVolume = rows.map((ch, i) => {
+  const cells: ReactNode[] = [];
+  rows.forEach((ch) => {
     const first = !seenVolumes.has(ch.volume);
     seenVolumes.add(ch.volume);
-    return { ...ch, firstOfVolume: first, ordinal: start + i + 1 };
+    if (first && ch.volume) {
+      cells.push(
+        <li key={"v" + ch.chapter_id} className="volume-row">
+          <p className="muted volume-head">
+            {ch.volume}
+            {page > 1 ? "（续）" : ""}
+          </p>
+        </li>,
+      );
+    }
+    cells.push(
+      <li key={ch.chapter_id} className={ch.chapter_id === chapterId ? "current" : ""}>
+        <span className="toc-num">{ordinals.get(ch.chapter_id)}</span>
+        <Link to={readUrl(bookId, ch.chapter_id) + "?from=toc&toc=" + page}>
+          {ch.title}
+        </Link>
+      </li>,
+    );
   });
 
-  const jump = (n: number) => "/books/" + bookId + "?toc=" + n + (chapterId ? "&chapter=" + chapterId : "");
+  const jump = (n: number) =>
+    "/books/" + bookId + "?toc=" + n + (chapterId ? "&chapter=" + chapterId : "") + (rev ? "&rev=1" : "");
 
   const pager = totalPages > 1 ? (
     <p className="toc-pager">
@@ -175,22 +218,7 @@ function TocList(props: {
 
   return (
     <div>
-      <ul className="toc">
-        {rowsWithVolume.map((ch) => (
-          <li key={ch.chapter_id} className={ch.chapter_id === chapterId ? "current" : ""}>
-            {ch.firstOfVolume && ch.volume ? (
-              <p className="muted volume-head">
-                {ch.volume}
-                {page > 1 ? "（续）" : ""}
-              </p>
-            ) : null}
-            <span className="toc-num">{ch.ordinal}</span>
-            <Link to={readUrl(bookId, ch.chapter_id) + "?from=toc&toc=" + page}>
-              {ch.title}
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <ul className="toc">{cells}</ul>
       {pager}
     </div>
   );
