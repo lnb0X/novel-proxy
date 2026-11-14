@@ -63,6 +63,8 @@ func buildEngine(cfg *config.Config, deps *serverDeps) (*gin.Engine, func(), err
 	// 统计钩子：紧随 trace_id，包裹全部后续中间件（含 recover，panic 也记录）。
 	// 与文章缓存同库；storage 未启用时为 nil，三组统计接口返回 50301。
 	// confirm 热挂载时 storage 已在写盘前建好（deps.prepared），直接挂用。
+	// 消费标记留到成功收尾：中途失败时 deps.prepared 仍指向连接组，
+	// Confirm 侧按未消费释放，stats 写入协程不会变僵尸。
 	var statStore *stats.Stats
 	var counters *store.CountingStore
 	var articleStore store.ArticleStore
@@ -70,7 +72,6 @@ func buildEngine(cfg *config.Config, deps *serverDeps) (*gin.Engine, func(), err
 		statStore = deps.prepared.StatStore
 		counters = deps.prepared.Counters
 		articleStore = deps.prepared.ArticleStore
-		deps.prepared = nil
 	} else if cfg.Storage.Enabled {
 		ss, serr := stats.New(cfg.Storage.Driver, cfg.Storage.DSN, deps.lg.Logger)
 		if serr != nil {
@@ -221,6 +222,11 @@ func buildEngine(cfg *config.Config, deps *serverDeps) (*gin.Engine, func(), err
 
 	// cleanup：停掉本 engine 独有的后台协程。Stop 只停限流扫描协程，
 	// 在途请求持有的令牌桶不受影响，可以安全地在换 engine 后调用。
+	// 成功收尾：连接组归本 engine，标记已消费并清空钩子侧引用。
+	if deps.prepared != nil {
+		deps.prepared.MarkConsumed()
+		deps.prepared = nil
+	}
 	return engine, rateLimiter.Stop, nil
 }
 

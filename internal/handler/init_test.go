@@ -8,8 +8,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -283,5 +285,46 @@ func TestInitDatabaseTestPingOnly(t *testing.T) {
 	resp = postInit(r, "/init/api/database/test", `{"driver":"sqlite","dsn":":memory:"}`, session)
 	if !strings.Contains(resp.Body.String(), `"ok":true`) {
 		t.Fatalf("sqlite 内存库应 ok=true: %s", resp.Body.String())
+	}
+}
+
+// confirm 热挂载失败时预建连接组必须释放：stats 写入协程与连接池不能
+// 随重试累积成僵尸。连续三次失败，goroutine 数回到基线（±2 抖动）。
+func TestInitConfirmFailureReleasesGoroutines(t *testing.T) {
+	r, w, _, _, _ := newInitEnv(t, false)
+	session, _ := getToken(t, r, w)
+
+	for _, step := range []struct {
+		path string
+		body string
+	}{
+		{"/init/api/account", `{"username":"boss","password":"Abcdef1!Abcde","admin_path":"adm"}`},
+		{"/init/api/storage", `{"enabled":true}`},
+		{"/init/api/database", `{"driver":"sqlite","dsn":":memory:"}`},
+	} {
+		resp := postInit(r, step.path, step.body, session)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("%s = %d %s", step.path, resp.Code, resp.Body.String())
+		}
+	}
+
+	// 钩子始终失败：prepareStorage 已成功、后续热挂载失败的情形。
+	w.SetOnConfirm(func(*PreparedStorage) error { return errors.New("热挂载失败") })
+
+	runtime.GC()
+	base := runtime.NumGoroutine()
+	for i := 0; i < 3; i++ {
+		resp := postInit(r, "/init/api/confirm", "", session)
+		if resp.Code != http.StatusInternalServerError {
+			t.Fatalf("第 %d 次 confirm 应 50001: %d %s", i+1, resp.Code, resp.Body.String())
+		}
+		// Close 同步 drain，容忍调度抖动，短暂等待回落。
+		deadline := time.Now().Add(time.Second)
+		for runtime.NumGoroutine() > base+2 && time.Now().Before(deadline) {
+			time.Sleep(20 * time.Millisecond)
+		}
+		if now := runtime.NumGoroutine(); now > base+2 || now < base-2 {
+			t.Fatalf("第 %d 次失败后 goroutine 未回基线: base=%d now=%d", i+1, base, now)
+		}
 	}
 }

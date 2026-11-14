@@ -343,14 +343,24 @@ type PreparedStorage struct {
 	StatStore    *stats.Stats
 	Counters     *store.CountingStore
 	ArticleStore store.ArticleStore
+	// consumed 由热挂载侧接管成功后置位。未消费时失败路径要关掉连接
+	// 组：stats 写入协程会挂到进程退出，反复重试会累积僵尸协程；已
+	// 消费则归新 engine 管，关掉会弄死新 engine 的统计。
+	consumed bool
 }
 
-// releaseStorage 释放连接组。ArticleStore 接口没有 Close（接口已冻结），
-// 对实现了 Close 的具体类型做可选断言。
-func releaseStorage(p *PreparedStorage) {
-	if p == nil {
+// MarkConsumed 热挂载侧接管连接组后调用，之后由新 engine 负责其生命周期。
+func (p *PreparedStorage) MarkConsumed() {
+	p.consumed = true
+}
+
+// ReleaseIfUnconsumed 关闭未被接管的连接组：连接池（可选 Close 断言）
+// 与 stats 写入协程。已被接管则不动。幂等：释放后置位防二次关闭。
+func (p *PreparedStorage) ReleaseIfUnconsumed() {
+	if p == nil || p.consumed {
 		return
 	}
+	p.consumed = true
 	if c, ok := p.ArticleStore.(interface{ Close() error }); ok {
 		_ = c.Close()
 	}
@@ -439,6 +449,8 @@ func (w *InitWizard) Confirm() gin.HandlerFunc {
 			return nil
 		})
 		if err != nil {
+			// 写盘失败：没有任何 engine 会接管这份连接，释放。
+			prepared.ReleaseIfUnconsumed()
 			failInternal(c, err)
 			return
 		}
@@ -463,14 +475,15 @@ func (w *InitWizard) Confirm() gin.HandlerFunc {
 				w.cfg.Storage.Enabled = oldEnabled
 				w.cfg.Storage.Driver = oldDriver
 				w.cfg.Storage.DSN = oldDSN
-				// 钩子失败，没有 engine 接管这份连接，释放。
-				releaseStorage(prepared)
+				// 钩子失败且连接组未被接管：关掉 stats 写入协程与连接池，
+				// 不释放会随重试累积僵尸协程；已被接管则不动。
+				prepared.ReleaseIfUnconsumed()
 				failInternal(c, err)
 				return
 			}
 		} else {
 			// 无钩子（测试场景）：没有任何 engine 会接管，直接释放。
-			releaseStorage(prepared)
+			prepared.ReleaseIfUnconsumed()
 		}
 
 		_ = os.Remove(filepath.Join(filepath.Dir(w.instancePath), initTokenFile))
