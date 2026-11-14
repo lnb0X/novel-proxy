@@ -4,6 +4,17 @@ import "./wizard.css";
 
 // 四步向导：1 令牌、2 账号、3 缓存、4 确认。
 // 密码规则与管理端后端 ValidatePassword 逐条对应，后端为最终裁判。
+// 第 3 步按驱动收集结构化字段，前端拼 DSN；后端接口仍收 { driver, dsn }。
+interface DbFields {
+  host: string;
+  port: string;
+  user: string;
+  password: string;
+  showPassword: boolean;
+  dbName: string;
+  authSource: string;
+}
+
 interface Draft {
   username: string;
   password: string;
@@ -11,7 +22,8 @@ interface Draft {
   adminPath: string;
   storageOn: boolean;
   driver: string;
-  dsn: string;
+  path: string;
+  db: DbFields;
 }
 
 const WEAK = ["password", "qwerty", "123456", "admin", "letmein"];
@@ -27,6 +39,100 @@ const RESERVED = [
   "robots.txt",
 ];
 const STEP_TITLES = ["令牌", "账号", "缓存", "确认"];
+
+// 各驱动的默认端口，随驱动切换自动填入，可改。
+const DEFAULT_PORT: Record<string, string> = {
+  postgres: "5432",
+  mysql: "3306",
+  mongo: "27017",
+};
+
+const SQLITE_DEFAULT_PATH = "./data/cache.db";
+
+const enc = encodeURIComponent;
+
+// buildDSN 按驱动拼真实 DSN；用户名与密码等特殊字符必须编码。
+function buildDSN(d: Draft): string {
+  const f = d.db;
+  switch (d.driver) {
+    case "sqlite":
+      return d.path;
+    case "postgres":
+      return (
+        `postgres://${enc(f.user)}:${enc(f.password)}` +
+        `@${f.host}:${f.port}/${enc(f.dbName)}?sslmode=disable&connect_timeout=5`
+      );
+    case "mysql":
+      return (
+        `${enc(f.user)}:${enc(f.password)}@tcp(${f.host}:${f.port})/` +
+        `${enc(f.dbName)}?charset=utf8mb4&parseTime=true&loc=Local&timeout=5s`
+      );
+    case "mongo":
+      return (
+        `mongodb://${enc(f.user)}:${enc(f.password)}` +
+        `@${f.host}:${f.port}/${enc(f.dbName)}?authSource=${enc(f.authSource)}` +
+        `&connectTimeoutMS=5000`
+      );
+    default:
+      return "";
+  }
+}
+
+// buildDSNMasked 仅供展示：密码段打码成 ****。
+function buildDSNMasked(d: Draft): string {
+  const f = d.db;
+  switch (d.driver) {
+    case "sqlite":
+      return d.path;
+    case "postgres":
+      return (
+        `postgres://${enc(f.user)}:****` +
+        `@${f.host}:${f.port}/${enc(f.dbName)}?sslmode=disable&connect_timeout=5`
+      );
+    case "mysql":
+      return (
+        `${enc(f.user)}:****@tcp(${f.host}:${f.port})/` +
+        `${enc(f.dbName)}?charset=utf8mb4&parseTime=true&loc=Local&timeout=5s`
+      );
+    case "mongo":
+      return (
+        `mongodb://${enc(f.user)}:****` +
+        `@${f.host}:${f.port}/${enc(f.dbName)}?authSource=${enc(f.authSource)}` +
+        `&connectTimeoutMS=5000`
+      );
+    default:
+      return "";
+  }
+}
+
+// dbFieldsError 结构化字段校验：除 authSource 外全部必填，不满足时
+// 返回具体原因。
+function dbFieldsError(d: Draft): string {
+  if (d.driver === "") {
+    return "请选择驱动";
+  }
+  if (d.driver === "sqlite") {
+    return d.path.trim() === "" ? "文件路径不能为空" : "";
+  }
+  const f = d.db;
+  if (f.host.trim() === "") {
+    return "主机不能为空";
+  }
+  const port = Number(f.port);
+  if (!/^\d{1,5}$/.test(f.port.trim()) || port < 1 || port > 65535) {
+    return "端口需为 1 到 65535 的数字";
+  }
+  if (f.user.trim() === "") {
+    return "用户名不能为空";
+  }
+  if (f.password === "") {
+    return "密码不能为空";
+  }
+  if (f.dbName.trim() === "") {
+    return "数据库名不能为空";
+  }
+  return "";
+}
 
 async function post(path: string, body?: unknown): Promise<any> {
   const res = await fetch("/init/api" + path, {
@@ -116,8 +222,20 @@ function Wizard() {
     adminPath: "",
     storageOn: false,
     driver: "",
-    dsn: "",
+    path: "",
+    db: {
+      host: "",
+      port: "",
+      user: "",
+      password: "",
+      showPassword: false,
+      dbName: "",
+      authSource: "admin",
+    },
   });
+  // 测试连接状态：记录通过时的 DSN，字段再动一下就失效。
+  const [tested, setTested] = useState<{ dsn: string; ok: boolean; msg: string } | null>(null);
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     setDraft((d) => ({ ...d, adminPath: randomPath() }));
@@ -201,8 +319,10 @@ function Wizard() {
 
   // 第 2 步可用条件：四条密码规则全过 + 路径合法 + 用户名非空。
   const accountOK = rulesOK && pErr === "" && draft.username.trim().length > 0;
-  // 第 3 步可用条件：不启用缓存，或驱动与 DSN 都已填。
-  const storageOK = !draft.storageOn || (draft.driver !== "" && draft.dsn.trim() !== "");
+  // 第 3 步可用条件：不启用缓存，或字段齐、且当前 DSN 刚测试通过。
+  const currentDSN = buildDSN(draft);
+  const testFresh = tested !== null && tested.dsn === currentDSN && tested.ok;
+  const storageOK = !draft.storageOn || (dbFieldsError(draft) === "" && testFresh);
 
   return (
     <div className="card">
@@ -315,7 +435,7 @@ function Wizard() {
             run(async () => {
               await post("/storage", { enabled: draft.storageOn });
               if (draft.storageOn) {
-                await post("/database", { driver: draft.driver, dsn: draft.dsn });
+                await post("/database", { driver: draft.driver, dsn: currentDSN });
               }
               setStep(4);
             });
@@ -340,8 +460,9 @@ function Wizard() {
                     setDraft((d) => ({
                       ...d,
                       driver: v,
-                      // 只在选到 sqlite 时自动填默认 DSN；其余驱动保持空白。
-                      dsn: v === "sqlite" ? (d.dsn === "" ? "./data/cache.db" : d.dsn) : "",
+                      // 端口随驱动自动填默认值；sqlite 填默认文件路径。
+                      db: { ...d.db, port: DEFAULT_PORT[v] ?? "" },
+                      path: v === "sqlite" && d.path === "" ? SQLITE_DEFAULT_PATH : d.path,
                     }));
                   }}
                 >
@@ -352,14 +473,119 @@ function Wizard() {
                   <option value="mongo">mongo</option>
                 </select>
               </label>
-              <label className="field">
-                <span className="field-label">DSN</span>
-                <input
-                  value={draft.dsn}
-                  onChange={(e) => setDraft({ ...draft, dsn: e.target.value })}
-                  spellCheck={false}
-                />
-              </label>
+              {draft.driver === "sqlite" ? (
+                <label className="field">
+                  <span className="field-label">文件路径</span>
+                  <input
+                    value={draft.path}
+                    onChange={(e) => setDraft({ ...draft, path: e.target.value })}
+                    spellCheck={false}
+                  />
+                </label>
+              ) : null}
+              {draft.driver !== "" && draft.driver !== "sqlite" ? (
+                <>
+                  <label className="field">
+                    <span className="field-label">主机</span>
+                    <input
+                      value={draft.db.host}
+                      onChange={(e) => setDraft({ ...draft, db: { ...draft.db, host: e.target.value } })}
+                      spellCheck={false}
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="field-label">端口</span>
+                    <input
+                      value={draft.db.port}
+                      onChange={(e) => setDraft({ ...draft, db: { ...draft.db, port: e.target.value } })}
+                      spellCheck={false}
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="field-label">用户名</span>
+                    <input
+                      value={draft.db.user}
+                      onChange={(e) => setDraft({ ...draft, db: { ...draft.db, user: e.target.value } })}
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="field-label">密码</span>
+                    <span className="pw-row">
+                      <input
+                        type={draft.db.showPassword ? "text" : "password"}
+                        value={draft.db.password}
+                        onChange={(e) => setDraft({ ...draft, db: { ...draft.db, password: e.target.value } })}
+                        autoComplete="new-password"
+                      />
+                      <button
+                        type="button"
+                        className="btn ghost pw-toggle"
+                        onClick={() => setDraft({ ...draft, db: { ...draft.db, showPassword: !draft.db.showPassword } })}
+                      >
+                        {draft.db.showPassword ? "隐藏" : "显示"}
+                      </button>
+                    </span>
+                  </label>
+                  <label className="field">
+                    <span className="field-label">数据库名</span>
+                    <input
+                      value={draft.db.dbName}
+                      onChange={(e) => setDraft({ ...draft, db: { ...draft.db, dbName: e.target.value } })}
+                      spellCheck={false}
+                    />
+                  </label>
+                  {draft.driver === "mongo" ? (
+                    <label className="field">
+                      <span className="field-label">authSource</span>
+                      <input
+                        value={draft.db.authSource}
+                        onChange={(e) => setDraft({ ...draft, db: { ...draft.db, authSource: e.target.value } })}
+                        spellCheck={false}
+                      />
+                    </label>
+                  ) : null}
+                </>
+              ) : null}
+              {draft.driver !== "" ? (
+                <>
+                  <label className="field">
+                    <span className="field-label">最终 DSN（密码已打码，可选中复制）</span>
+                    <input className="dsn-preview" readOnly value={buildDSNMasked(draft)} spellCheck={false} />
+                  </label>
+                  <div className="test-row">
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      disabled={busy}
+                      onClick={() => {
+                        const err = dbFieldsError(draft);
+                        if (err) {
+                          setTested({ dsn: currentDSN, ok: false, msg: err });
+                          return;
+                        }
+                        run(async () => {
+                          setTesting(true);
+                          try {
+                            const r = await post("/database/test", { driver: draft.driver, dsn: currentDSN });
+                            setTested({ dsn: currentDSN, ok: !!r.ok, msg: String(r.message ?? "") });
+                          } finally {
+                            setTesting(false);
+                          }
+                        });
+                      }}
+                    >
+                      {testing ? "测试中..." : "测试连接"}
+                    </button>
+                    {tested !== null && tested.dsn === currentDSN ? (
+                      <span className={"test-result " + (tested.ok ? "ok" : "err")}>
+                        {tested.ok ? tested.msg || "连接成功" : tested.msg || "测试失败"}
+                      </span>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
             </>
           ) : null}
           <div className="btn-row">
@@ -404,7 +630,7 @@ function Wizard() {
                 </li>
                 <li>
                   <span>DSN</span>
-                  <b>{draft.dsn}</b>
+                  <b>{buildDSNMasked(draft)}</b>
                 </li>
               </>
             ) : null}

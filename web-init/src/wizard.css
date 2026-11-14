@@ -313,6 +313,33 @@ body {
   color: var(--danger);
 }
 
+/* DSN 预览与测试连接 */
+.dsn-preview {
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  color: var(--fg-muted);
+  background: #fafafa;
+}
+
+.test-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0 0;
+}
+
+.test-result {
+  font-size: 12px;
+}
+
+.test-result.ok {
+  color: var(--success);
+}
+
+.test-result.err {
+  color: var(--danger);
+}
+
 code {
   font-family: Consolas, monospace;
 }

@@ -397,6 +397,11 @@ func FileServer(dir, urlPrefix string) http.Handler {
 		if rel == "" || rel == "." {
 			rel = "index.html"
 		}
+		if rel == "index.html" {
+			// SPA 外壳禁止缓存：init 完成后 /init/ 要立刻变 404，
+			// 管理端换版后外壳要立刻更新；带哈希的静态资源不受影响。
+			w.Header().Set("Cache-Control", "no-store")
+		}
 		full := filepath.Join(dir, filepath.FromSlash(rel))
 		info, err := os.Stat(full)
 		if err != nil || info.IsDir() {
