@@ -402,6 +402,10 @@ func FileServer(dir, urlPrefix string) http.Handler {
 			// 管理端换版后外壳要立刻更新；带哈希的静态资源不受影响。
 			w.Header().Set("Cache-Control", "no-store")
 		}
+		if strings.HasPrefix(rel, "assets/") {
+			// 带内容哈希的构建产物：长缓存 + immutable，两条分支互斥。
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
 		full := filepath.Join(dir, filepath.FromSlash(rel))
 		info, err := os.Stat(full)
 		if err != nil || info.IsDir() {
