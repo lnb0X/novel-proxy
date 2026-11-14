@@ -201,6 +201,12 @@ a {
   border-color: var(--muted);
 }
 
+/* 加载更多 / 加载中：列表末尾居中 */
+.load-more {
+  text-align: center;
+  margin: var(--space-4) 0;
+}
+
 /* 顶部导航（非悬浮，普通文档流，不遮挡正文） */
 .topnav {
   max-width: var(--reader-max-width);

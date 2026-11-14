@@ -92,7 +92,10 @@ function SearchBody(props: {
   if (q === "") {
     return <p className="muted">输入书名或作者开始搜索。</p>;
   }
-  if (results.isPending) {
+  // 追加页（page>1）加载中：保留已渲染列表，滚动位置不动；
+  // 骨架屏只用于第 1 页的首次加载。
+  const appending = results.isPending && page > 1;
+  if (results.isPending && !appending) {
     // 骨架屏：8 行静态色块。
     return (
       <div>
@@ -132,16 +135,20 @@ function SearchBody(props: {
           </div>
         </Link>
       ))}
-      {data.has_more ? (
-        <p style={{ textAlign: "center" }}>
-          <button className="btn" onClick={() => goPage(meta.loadedPage + 1)}>
+      {appending ? (
+        <p className="load-more muted">加载中...</p>
+      ) : data.has_more ? (
+        <p className="load-more">
+          <button
+            className="btn"
+            type="button"
+            onClick={() => goPage(meta.loadedPage + 1)}
+          >
             加载更多（第 {meta.loadedPage + 1} 页）
           </button>
         </p>
       ) : (
-        <p className="muted" style={{ textAlign: "center" }}>
-          没有更多了
-        </p>
+        <p className="muted load-more">没有更多了</p>
       )}
     </div>
   );
