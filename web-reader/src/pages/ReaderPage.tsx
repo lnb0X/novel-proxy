@@ -92,7 +92,8 @@ export function ReaderPage() {
 
   return (
     <div className="page reader-body" onClick={toggleOnBodyClick(setMenuVisible)}>
-      <header className={"topbar" + (menuVisible ? "" : " hidden")}>
+      <div className="page-container">
+        <header className={"topbar" + (menuVisible ? "" : " hidden")}>
         <nav className="topbar-inner">
           <Link className="btn" to={"/books/" + bookId + (idx >= 0 ? "?toc=" + (Math.floor(idx / 200) + 1) + "&chapter=" + chapterId : "")}>
             返回
@@ -141,6 +142,7 @@ export function ReaderPage() {
           )}
         </nav>
       </footer>
+      </div>
     </div>
   );
 }

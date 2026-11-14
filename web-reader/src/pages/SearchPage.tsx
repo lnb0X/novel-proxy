@@ -34,27 +34,28 @@ export function SearchPage() {
 
   return (
     <div className="page">
-      <nav className="topnav">
-        <Link to="/">搜索</Link>
-      </nav>
-      <h1 className="page-title">搜索</h1>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-      >
-        <input
-          className="search-input"
-          value={draft}
-          placeholder="输入书名或作者，回车搜索"
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        <button className="btn" type="submit">
-          搜索
-        </button>
-      </form>
-      <SearchBody q={q} page={page} results={results} goPage={(p) => setParams({ q, page: String(p) })} />
+      <div className="page-container">
+        <nav className="topnav">
+          <Link to="/">搜索</Link>
+        </nav>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
+          <input
+            className="search-input"
+            value={draft}
+            placeholder="输入书名或作者，回车搜索"
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <button className="btn" type="submit">
+            搜索
+          </button>
+        </form>
+        <SearchBody q={q} page={page} results={results} goPage={(p) => setParams({ q, page: String(p) })} />
+      </div>
     </div>
   );
 }

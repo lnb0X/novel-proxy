@@ -1,7 +1,15 @@
 /* reader.css —— 阅读端唯一的配色与字号来源。
-   组件里不得写死颜色、字号、间距，一律引用这里的变量。 */
+   组件里不得写死颜色、字号、间距，一律引用这里的变量。
+   间距、字号、圆角、控件高度取自 tokens.css；--reader-* 是正文排版
+   变量（字号五档 / 行高 / 38em / 段距，不属于 UI 骨架）；
+   --bg/--fg/--muted/--line/--hover/--primary 是阅读端三主题配色。 */
 
 :root {
+  /* 页面容器与强调色 */
+  --page-max: 720px;
+  --page-pad: 20px;
+  --primary: #1677ff;
+
   /* 字号五档（R4 设置面板切换，作用于正文） */
   --reader-font-size: 16px;
   --reader-line-height: 1.85;
@@ -20,6 +28,7 @@
   --fg: #1a1a1a;
   --muted: #8a8a8a;
   --line: #e8e8e8;
+  --hover: #f5f5f5;
 }
 
 :root[data-theme="sepia"] {
@@ -27,6 +36,7 @@
   --fg: #3a3226;
   --muted: #8a8172;
   --line: #e0d8c8;
+  --hover: #ece5d4;
 }
 
 :root[data-theme="night"] {
@@ -34,6 +44,7 @@
   --fg: #c8c8c8;
   --muted: #6a6a6a;
   --line: #2a2a2a;
+  --hover: #262626;
 }
 
 :root[data-font="serif"] {
@@ -64,7 +75,20 @@ a {
 /* 页面主容器：正文直接落在背景上，无卡片 / 边框 / 投影 */
 .page {
   min-height: 100vh;
-  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+  padding: var(--space-3) var(--space-3) calc(var(--space-4) + env(safe-area-inset-bottom));
+}
+
+/* 统一内容容器：搜索 / 详情目录页共用，正文页见 .reader-body 覆写 */
+.page-container {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 0 var(--page-pad);
+}
+
+/* 正文页例外：容器宽度跟随正文的 38em（随字号缩放），仍居中 */
+.reader-body .page-container {
+  max-width: var(--reader-max-width);
+  padding: 0;
 }
 
 /* 正文排版：行高 1.85，列宽 38em（随字号缩放），段间距 0.8em，无首行缩进 */
@@ -91,10 +115,14 @@ a {
   display: none;
 }
 
-/* 页面标题与次级文字 */
+/* 页面标题与次级文字：书名 22px，区块标题 18px */
 .page-title {
-  font-size: calc(var(--reader-font-size) + 4px);
+  font-size: var(--font-lg);
   margin: 0 0 0.6em;
+}
+
+h1.page-title {
+  font-size: var(--font-xl);
 }
 
 .muted {
@@ -129,11 +157,9 @@ a {
 /* 搜索结果卡片（纯排版，无卡片容器装饰：仅上下间距与分隔线） */
 .result-item {
   display: flex;
-  gap: 12px;
-  padding: 12px 0;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--line);
-  max-width: var(--reader-max-width);
-  margin: 0 auto;
 }
 
 .result-item .cover {
@@ -148,18 +174,18 @@ a {
 }
 
 .result-item .title {
-  font-size: calc(var(--reader-font-size) + 1px);
-  margin: 0 0 4px;
+  font-size: var(--font-md);
+  margin: 0 0 var(--space-1);
 }
 
 .result-item .sub {
-  font-size: calc(var(--reader-font-size) - 2px);
+  font-size: var(--font-xs);
   color: var(--muted);
-  margin: 0 0 4px;
+  margin: 0 0 var(--space-1);
 }
 
 .result-item .abstract {
-  font-size: calc(var(--reader-font-size) - 1px);
+  font-size: var(--font-sm);
   color: var(--fg);
   margin: 0;
   display: -webkit-box;
@@ -168,14 +194,16 @@ a {
   overflow: hidden;
 }
 
-/* 按钮：文字按钮，继承主题色，无渐变无投影 */
+/* 按钮：文字按钮，继承主题色，无渐变无投影；主按钮实心 */
 .btn {
   background: none;
   border: 1px solid var(--line);
+  border-radius: var(--radius);
   color: var(--fg);
   font-family: inherit;
-  font-size: calc(var(--reader-font-size) - 1px);
-  padding: 6px 14px;
+  font-size: var(--font-md);
+  height: var(--control-h);
+  padding: 0 var(--space-3);
   cursor: pointer;
 }
 
@@ -183,17 +211,31 @@ a {
   border-color: var(--muted);
 }
 
+.btn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  min-width: 120px;
+}
+
+.btn.primary:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  opacity: 0.9;
+}
+
 /* 搜索输入框 */
 .search-input {
   width: 100%;
-  max-width: var(--reader-max-width);
+  height: var(--control-h);
   background: var(--bg);
   color: var(--fg);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
   font-family: inherit;
-  font-size: calc(var(--reader-font-size));
-  padding: 10px 12px;
-  margin-bottom: 16px;
+  font-size: var(--font-md);
+  padding: 0 var(--space-3);
+  margin-bottom: var(--space-3);
 }
 
 .search-input:focus {
@@ -209,14 +251,12 @@ a {
 
 /* 顶部导航（非悬浮，普通文档流，不遮挡正文） */
 .topnav {
-  max-width: var(--reader-max-width);
-  margin: 0 auto;
-  padding: 12px 0;
+  padding: var(--space-3) 0;
   display: flex;
-  gap: 16px;
+  gap: var(--space-3);
   align-items: center;
   border-bottom: 1px solid var(--line);
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 
 /* R4 顶栏底栏：fixed + transform 显隐，transition 只作用于 transform */
@@ -254,16 +294,15 @@ a {
 
 /* 正文上下内边距永久保留，菜单显隐不引起重排 */
 .reader-body {
-  padding-top: 56px;
-  padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  padding-top: calc(var(--control-h) + var(--space-4));
+  padding-bottom: calc(var(--control-h) + var(--space-4) + env(safe-area-inset-bottom));
 }
 
 /* R3 详情页 */
 .book-head {
   display: flex;
-  gap: 16px;
-  max-width: var(--reader-max-width);
-  margin: 0 auto 12px;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
 }
 
 .book-cover {
@@ -271,6 +310,7 @@ a {
   height: 160px;
   object-fit: cover;
   flex: none;
+  border-radius: var(--radius);
 }
 
 .book-meta {
@@ -283,38 +323,10 @@ a {
 }
 
 .intro {
-  max-width: var(--reader-max-width);
-  margin: 0 auto 12px;
+  margin: 0 0 var(--space-3);
 }
 
-/* 目录 */
-.toc {
-  list-style: none;
-  margin: 0 auto;
-  padding: 0;
-  max-width: var(--reader-max-width);
-}
-
-.toc li {
-  padding: 4px 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.toc li.current a {
-  font-weight: bold;
-}
-
-.toc .volume-head {
-  margin: 8px 0 4px;
-  font-weight: bold;
-}
-
-.toc-link {
-  margin-left: 12px;
-  color: var(--muted);
-}
-
-/* 简介 5 行折叠 */
+/* 简介 5 行折叠；展开 / 收起是文字按钮，不做边框按钮 */
 .intro-clamp {
   display: -webkit-box;
   -webkit-line-clamp: 5;
@@ -323,23 +335,86 @@ a {
 }
 
 .intro-toggle {
-  margin-bottom: 12px;
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-family: inherit;
+  font-size: var(--font-sm);
+  padding: 0;
+  cursor: pointer;
+  margin: 0 0 var(--space-5);
+}
+
+/* 目录：卷头、章节行、分页器同一条左边线；章节行高 40px 垂直居中 */
+.toc {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc li {
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: 3.5em 1fr;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.toc li:hover {
+  background: var(--hover);
+}
+
+.toc-num {
+  color: var(--muted);
+  font-size: var(--font-xs);
+  text-align: right;
+  padding-right: var(--space-2);
+}
+
+.toc li a {
+  grid-column: 2;
+}
+
+/* 当前章：加粗 + 左侧 2px 主色竖线（inset 不挤动布局） */
+.toc li.current {
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+
+.toc li.current a {
+  font-weight: bold;
+}
+
+.toc .volume-head {
+  grid-column: 1 / -1;
+  margin: var(--space-2) 0 var(--space-1);
+  font-weight: bold;
+}
+
+.toc-pager {
+  margin: var(--space-3) 0;
+  color: var(--muted);
+}
+
+.toc-link {
+  margin-left: var(--space-3);
+  color: var(--muted);
 }
 
 /* R4 顶栏底栏内部布局 */
 .topbar-inner {
   max-width: var(--reader-max-width);
   margin: 0 auto;
-  padding: 10px 16px;
+  height: var(--control-h);
+  padding: 0 var(--space-3);
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .topbar-title {
   flex: 1;
   text-align: center;
-  font-size: calc(var(--reader-font-size) - 1px);
+  font-size: var(--font-sm);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -352,11 +427,12 @@ a {
 .bottombar-inner {
   max-width: var(--reader-max-width);
   margin: 0 auto;
-  padding: 10px 16px;
+  height: var(--control-h);
+  padding: 0 var(--space-3);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .btn.disabled {
@@ -372,21 +448,22 @@ a {
 
 .settings-panel {
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + var(--space-2));
   left: 50%;
   transform: translateX(-50%);
   background: var(--bg);
   border: 1px solid var(--line);
-  padding: 12px;
+  border-radius: var(--radius);
+  padding: var(--space-3);
   width: 280px;
   z-index: 20;
 }
 
 .settings-row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 .settings-row .muted {

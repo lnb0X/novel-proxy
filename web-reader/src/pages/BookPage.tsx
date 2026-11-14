@@ -27,8 +27,10 @@ export function BookPage() {
     return (
       <div className="page">
         <TopNav />
-        <Skeleton rows={4} title cover />
-        <Skeleton rows={8} />
+        <div className="page-container">
+          <Skeleton rows={4} title cover />
+          <Skeleton rows={8} />
+        </div>
       </div>
     );
   }
@@ -36,7 +38,9 @@ export function BookPage() {
     return (
       <div className="page">
         <TopNav />
-        <ErrorRetry message="书籍信息加载失败" onRetry={() => detail.refetch()} />
+        <div className="page-container">
+          <ErrorRetry message="书籍信息加载失败" onRetry={() => detail.refetch()} />
+        </div>
       </div>
     );
   }
@@ -44,7 +48,9 @@ export function BookPage() {
     return (
       <div className="page">
         <TopNav />
-        <ErrorRetry message="目录加载失败" onRetry={() => catalog.refetch()} />
+        <div className="page-container">
+          <ErrorRetry message="目录加载失败" onRetry={() => catalog.refetch()} />
+        </div>
       </div>
     );
   }
@@ -57,41 +63,43 @@ export function BookPage() {
   return (
     <div className="page">
       <TopNav />
-      <div className="book-head">
-        {d.thumb_url ? <img className="book-cover" src={d.thumb_url} alt="" /> : null}
-        <div className="book-meta">
-          <h1 className="page-title">{d.title}</h1>
-          <p className="sub">
-            {d.author} · {formatWords(d.word_number)}字
-          </p>
+      <div className="page-container">
+        <div className="book-head">
+          {d.thumb_url ? <img className="book-cover" src={d.thumb_url} alt="" /> : null}
+          <div className="book-meta">
+            <h1 className="page-title">{d.title}</h1>
+            <p className="sub">
+              {d.author} · {formatWords(d.word_number)}字
+            </p>
+          </div>
         </div>
+        <div>
+          <p className={"intro" + (introOpen ? "" : " intro-clamp")}>{d.intro}</p>
+          {d.intro.length > 80 ? (
+            <button className="intro-toggle" onClick={() => setIntroOpen(!introOpen)}>
+              {introOpen ? "收起" : "展开"}
+            </button>
+          ) : null}
+        </div>
+        <p>
+          <Link className="btn primary" to={readUrl(bookId, firstChapterId(cat))}>
+            开始阅读
+          </Link>
+        </p>
+        <hr className="hr" />
+        <h2 className="page-title">目录（{cat.total} 章）</h2>
+        {cat.chapters.length === 0 ? (
+          <p className="muted">暂无目录</p>
+        ) : (
+          <TocList
+            cat={cat}
+            toc={toc}
+            totalPages={totalPages}
+            bookId={bookId}
+            chapterId={chapterId}
+          />
+        )}
       </div>
-      <div>
-        <p className={"intro" + (introOpen ? "" : " intro-clamp")}>{d.intro}</p>
-        {d.intro.length > 80 ? (
-          <button className="btn intro-toggle" onClick={() => setIntroOpen(!introOpen)}>
-            {introOpen ? "收起" : "展开"}
-          </button>
-        ) : null}
-      </div>
-      <p>
-        <Link className="btn" to={readUrl(bookId, firstChapterId(cat))}>
-          开始阅读
-        </Link>
-      </p>
-      <hr className="hr" />
-      <h2 className="page-title">目录（{cat.total} 章）</h2>
-      {cat.chapters.length === 0 ? (
-        <p className="muted">暂无目录</p>
-      ) : (
-        <TocList
-          cat={cat}
-          toc={toc}
-          totalPages={totalPages}
-          bookId={bookId}
-          chapterId={chapterId}
-        />
-      )}
     </div>
   );
 }
@@ -141,31 +149,32 @@ function TocList(props: {
   const rows = cat.chapters.slice(start, start + PAGE_SIZE);
 
   const seenVolumes = new Set<string>();
-  const rowsWithVolume = rows.map((ch) => {
+  const rowsWithVolume = rows.map((ch, i) => {
     const first = !seenVolumes.has(ch.volume);
     seenVolumes.add(ch.volume);
-    return { ...ch, firstOfVolume: first };
+    return { ...ch, firstOfVolume: first, ordinal: start + i + 1 };
   });
 
   const jump = (n: number) => "/books/" + bookId + "?toc=" + n + (chapterId ? "&chapter=" + chapterId : "");
 
+  const pager = totalPages > 1 ? (
+    <p className="toc-pager">
+      第 {page} / {totalPages} 页
+      {page > 1 ? (
+        <Link className="toc-link" to={jump(page - 1)}>
+          上一页
+        </Link>
+      ) : null}
+      {page < totalPages ? (
+        <Link className="toc-link" to={jump(page + 1)}>
+          下一页
+        </Link>
+      ) : null}
+    </p>
+  ) : null;
+
   return (
     <div>
-      {totalPages > 1 ? (
-        <p className="muted">
-          第 {page} / {totalPages} 页
-          {page > 1 ? (
-            <Link className="toc-link" to={jump(page - 1)}>
-              上一页
-            </Link>
-          ) : null}
-          {page < totalPages ? (
-            <Link className="toc-link" to={jump(page + 1)}>
-              下一页
-            </Link>
-          ) : null}
-        </p>
-      ) : null}
       <ul className="toc">
         {rowsWithVolume.map((ch) => (
           <li key={ch.chapter_id} className={ch.chapter_id === chapterId ? "current" : ""}>
@@ -175,12 +184,14 @@ function TocList(props: {
                 {page > 1 ? "（续）" : ""}
               </p>
             ) : null}
+            <span className="toc-num">{ch.ordinal}</span>
             <Link to={readUrl(bookId, ch.chapter_id) + "?from=toc&toc=" + page}>
               {ch.title}
             </Link>
           </li>
         ))}
       </ul>
+      {pager}
     </div>
   );
 }
